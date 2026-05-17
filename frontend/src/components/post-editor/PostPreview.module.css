@@ -1,0 +1,386 @@
+.wrapper { display: flex; flex-direction: column; height: 100%; }
+.empty { color: var(--text2); font-size: 13px; padding: 24px; text-align: center; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab {
+  padding: 5px 12px; border-radius: 6px;
+  border: none; background: var(--bg3); color: var(--text2);
+  font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--accent); color: #fff; }
+
+.preview { flex: 1; overflow-y: auto; }
+
+/* ── Telegram ── */
+.tgPhone {
+  background: #17212b;
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  width: 100%;
+  max-width: 400px;
+}
+
+.tgTopBar {
+  background: #232e3c;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #0d1117;
+}
+
+.tgAvatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5b6eae, #a78bfa);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+
+.tgChannelInfo { flex: 1; }
+.tgChannelName { font-size: 15px; font-weight: 600; color: #fff; }
+.tgChannelSubs { font-size: 12px; color: #7d8b99; }
+
+.tgFeed { padding: 10px; background: #17212b; }
+
+.tgBubble {
+  background: #232e3c;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+
+.tgMediaWrap { width: 100%; }
+.tgMediaGrid { display: grid; gap: 2px; }
+.tgMediaGrid.one { grid-template-columns: 1fr; }
+.tgMediaGrid.two { grid-template-columns: 1fr 1fr; }
+.tgMediaGrid.three { grid-template-columns: 1fr 1fr; }
+.tgMediaGrid.many { grid-template-columns: 1fr 1fr; }
+.tgMediaImg { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
+.tgMediaImg.tall { aspect-ratio: 4/3; }
+
+.tgText {
+  padding: 12px 14px 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #e8eaf0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tgTitle { font-weight: 700; font-size: 14px; margin-bottom: 4px; color: #fff; }
+.vkTitle { font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #000; }
+.maxTitle { font-weight: 700; font-size: 15px; margin-bottom: 4px; color: #000; }
+
+.tgText strong { font-weight: 700; }
+.tgText em { font-style: italic; }
+.tgText s { text-decoration: line-through; opacity: 0.7; }
+.tgText code {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.tgText a { color: #64b5f6; text-decoration: none; }
+.spoilerText {
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  padding: 0 3px;
+  color: transparent;
+  cursor: pointer;
+}
+
+.tgMeta {
+  padding: 2px 12px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tgViews { font-size: 11px; color: #7d8b99; display: flex; align-items: center; gap: 3px; }
+.tgTime { font-size: 11px; color: #7d8b99; }
+
+.tgReactions {
+  padding: 6px 10px 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tgReaction {
+  background: rgba(100,181,246,0.15);
+  border: 1px solid rgba(100,181,246,0.3);
+  border-radius: 100px;
+  padding: 3px 8px;
+  font-size: 13px;
+  color: #64b5f6;
+}
+
+/* Poll in TG */
+.tgPoll { padding: 10px 12px; }
+.tgPollQ { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 10px; }
+.tgPollOption {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: rgba(100,181,246,0.08);
+  border: 1px solid rgba(100,181,246,0.2);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px; color: #e8eaf0;
+}
+.tgPollOption::before { content: '◯'; color: #64b5f6; font-size: 16px; }
+.tgPollMeta { font-size: 11px; color: #7d8b99; margin-top: 6px; }
+
+/* ── VK (mobile) ── */
+.vkCard {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 400px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #000;
+}
+
+.vkHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 10px;
+}
+
+.vkAvatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2688eb, #5ac8fa);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+
+.vkNameRow { display: flex; align-items: center; gap: 4px; }
+.vkName { font-size: 15px; font-weight: 600; color: #000; }
+.vkVerified { color: #2688eb; font-size: 14px; }
+.vkDate { font-size: 13px; color: #818c99; }
+.vkMore { margin-left: auto; color: #818c99; font-size: 20px; line-height: 1; padding: 4px 6px; }
+
+.vkMedia { position: relative; width: 100%; }
+.vkImg { width: 100%; max-height: 500px; object-fit: cover; display: block; }
+.vkImgCount {
+  position: absolute;
+  top: 12px; right: 12px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  border-radius: 100px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.vkText {
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vkShowMore { color: #2688eb; cursor: pointer; display: inline; }
+.vkTime {
+  padding: 0 14px 12px;
+  font-size: 13px;
+  color: #818c99;
+}
+
+.vkPoll {
+  margin: 8px 14px 12px;
+  border: 1px solid #e1e3e6;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.vkPollQ { padding: 12px 14px; font-size: 15px; font-weight: 600; border-bottom: 1px solid #e1e3e6; }
+.vkPollOpt {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e1e3e6;
+  font-size: 14px;
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer;
+}
+.vkPollOpt::before { content: ''; width: 18px; height: 18px; border: 2px solid #2688eb; border-radius: 50%; flex-shrink: 0; }
+.vkPollOpt:last-child { border-bottom: none; }
+
+.vkActions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 14px 14px;
+}
+.vkAction {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: #818c99;
+  cursor: pointer;
+}
+.vkActionIcon { font-size: 18px; }
+
+/* ── Instagram ── */
+.igCard {
+  background: #fff;
+  border-radius: 4px;
+  overflow: hidden;
+  max-width: 400px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  border: 1px solid #dbdbdb;
+}
+
+.igHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.igAvatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  padding: 2px;
+  flex-shrink: 0;
+}
+.igAvatarInner {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  border: 2px solid #fff;
+}
+
+.igUsername { font-size: 13px; font-weight: 600; color: #000; flex: 1; }
+.igMore { color: #000; font-size: 20px; line-height: 1; }
+
+.igMedia { width: 100%; }
+.igImg { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+
+.igActions {
+  display: flex;
+  gap: 14px;
+  padding: 10px 12px 6px;
+  align-items: center;
+}
+.igActionBtn { font-size: 22px; cursor: pointer; line-height: 1; }
+.igSave { margin-left: auto; }
+
+.igLikes { padding: 0 12px 4px; font-size: 13px; font-weight: 600; color: #000; }
+
+.igCaption {
+  padding: 2px 12px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.igCaptionUser { font-weight: 700; margin-right: 4px; }
+
+.igDate { padding: 0 12px 10px; font-size: 10px; color: #8e8e8e; text-transform: uppercase; letter-spacing: 0.3px; }
+
+/* ── Max (Telegram-like with blue theme) ── */
+.maxPhone {
+  background: #cfe2f3;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.4) 0, transparent 2px),
+    radial-gradient(circle at 70% 60%, rgba(255,255,255,0.3) 0, transparent 2px),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.35) 0, transparent 2px);
+  background-size: 80px 80px;
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  max-width: 400px;
+}
+
+.maxTopBar {
+  background: #fff;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #e6eaf0;
+}
+
+.maxBackIcon { font-size: 18px; color: #666; }
+
+.maxAvatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a90e2, #67b8f0);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+
+.maxChannelInfo { flex: 1; }
+.maxName { font-size: 15px; font-weight: 600; color: #000; }
+.maxSubs { font-size: 12px; color: #818c99; }
+.maxMore { color: #818c99; font-size: 22px; line-height: 1; }
+
+.maxFeed { padding: 12px 10px; }
+
+.maxBubble {
+  background: #fff;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.maxImg { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+
+.maxText {
+  padding: 10px 12px 6px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.maxMeta {
+  padding: 2px 12px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.maxViews { font-size: 11px; color: #818c99; }
+.maxTime { font-size: 11px; color: #818c99; }
+
+.maxReactions {
+  padding: 6px 10px 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.maxReaction {
+  background: #e6f0fb;
+  border: 1px solid #c8def4;
+  border-radius: 100px;
+  padding: 3px 9px;
+  font-size: 13px;
+  color: #2688eb;
+}
+
+.maxSubscribe {
+  padding: 14px 0;
+  text-align: center;
+  background: #fff;
+  border-top: 1px solid #e6eaf0;
+  color: #2688eb;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* shared */
+.noContent { color: var(--text2); font-size: 12px; font-style: italic; padding: 8px 12px; }

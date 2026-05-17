@@ -1,0 +1,106 @@
+.wrapper { display: flex; flex-direction: column; gap: 16px; }
+.title { font-size: var(--fs-lg); font-weight: 600; }
+.hint { font-size: var(--fs-base); color: var(--text2); line-height: 1.5; }
+.howto {
+  font-size: var(--fs-sm);
+  color: var(--text2);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  line-height: 1.6;
+}
+.howto code { font-family: monospace; background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 3px; font-size: var(--fs-xs); }
+
+.statusCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.statusHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  border-radius: 100px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.statusActions {
+  display: flex;
+  gap: 8px;
+}
+
+.statusRow {
+  display: flex;
+  gap: 12px;
+  font-size: var(--fs-sm);
+}
+
+.statusLabel { color: var(--text2); min-width: 80px; }
+.statusValue { color: var(--text); font-family: monospace; word-break: break-all; }
+
+.autoRule {
+  background: rgba(123, 97, 255, 0.08);
+  border: 1px solid rgba(123, 97, 255, 0.3);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.autoRuleHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.autoRuleIcon { font-size: 20px; }
+
+.autoRuleTitle {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.autoRuleStatus {
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 100px;
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.autoRuleInactive {
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 100px;
+  background: rgba(243, 156, 18, 0.15);
+  color: #f39c12;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.autoRuleDesc {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.55;
+  opacity: 0.85;
+}

@@ -1,0 +1,60 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: visible;
+  background: var(--bg3);
+  position: relative;
+}
+
+.editorArea {
+  position: relative;
+}
+
+.highlight {
+  position: absolute;
+  inset: 0;
+  padding: 12px 14px;
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.highlight strong { color: transparent; font-weight: 700; background: rgba(255,255,255,0.08); border-radius: 2px; }
+.highlight em { color: transparent; font-style: italic; background: rgba(255,255,255,0.05); border-radius: 2px; }
+.highlight s { color: transparent; background: rgba(255,255,255,0.05); border-radius: 2px; }
+.highlight code { color: transparent; background: rgba(123,97,255,0.15); border-radius: 3px; font-family: monospace; }
+.highlight .spoiler { color: transparent; background: rgba(255,255,255,0.1); border-radius: 3px; }
+.highlight a { color: transparent; background: rgba(41,182,246,0.15); border-radius: 2px; }
+
+.textarea {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 180px;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.6;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.emojiWrapper {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}

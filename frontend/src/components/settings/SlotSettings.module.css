@@ -1,0 +1,89 @@
+.wrapper { display: flex; flex-direction: column; gap: 18px; }
+.title { font-size: var(--fs-lg); font-weight: 600; }
+.hint { font-size: var(--fs-sm); color: var(--text2); line-height: 1.55; }
+.empty { color: var(--text2); font-size: var(--fs-sm); padding: 16px 0; }
+
+.addCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.addStep { display: flex; flex-direction: column; gap: 10px; }
+
+.stepLabel {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.quickButtons { display: flex; gap: 6px; flex-wrap: wrap; }
+.quickBtn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.quickBtn:hover { color: var(--accent); border-color: var(--accent); }
+
+.daysRow { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.dayBtn {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dayBtn:hover { border-color: var(--accent); color: var(--text); }
+.dayActive {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+  font-weight: 600;
+}
+
+.addActions { display: flex; gap: 8px; }
+
+.slotsList { display: flex; flex-direction: column; gap: 10px; }
+
+.slotCard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.slotTime {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 72px;
+  font-variant-numeric: tabular-nums;
+}
+
+.slotCard .daysRow { flex: 1; }
+
+.slotCard .dayBtn {
+  width: 40px;
+  height: 40px;
+  font-size: var(--fs-xs);
+}

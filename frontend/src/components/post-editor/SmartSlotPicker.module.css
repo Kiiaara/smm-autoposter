@@ -1,0 +1,17 @@
+.wrapper { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 12px; color: var(--text2); }
+.slots { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.slot {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.slot:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.slot.busy { opacity: 0.4; cursor: not-allowed; }
+.slot.selected { border-color: var(--accent); background: rgba(123,97,255,0.15); color: var(--accent); }

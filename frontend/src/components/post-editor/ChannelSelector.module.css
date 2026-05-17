@@ -1,0 +1,22 @@
+.wrapper { display: flex; flex-direction: column; gap: 14px; }
+.label { font-size: var(--fs-xs); color: var(--text2); font-weight: 600; }
+.group { display: flex; flex-direction: column; gap: 10px; }
+.channels { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 4px; }
+
+.channel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg3);
+  cursor: pointer;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s;
+}
+.channel:hover { border-color: var(--accent); }
+.channel input { display: none; }
+.channel.active { border-color: var(--accent); color: var(--text); }
+.channel.active::before { content: '✓ '; color: var(--accent); font-weight: 700; }

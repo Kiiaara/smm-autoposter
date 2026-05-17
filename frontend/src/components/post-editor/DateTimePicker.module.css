@@ -1,0 +1,196 @@
+.wrapper { display: flex; flex-direction: column; gap: 8px; position: relative; align-items: flex-start; }
+.label { font-size: 14px; color: var(--text2); font-weight: 600; }
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+  width: auto;
+  max-width: 320px;
+}
+.trigger:hover { border-color: var(--accent); background: var(--bg2); }
+
+.triggerPlaceholder { color: var(--text2); font-size: 15px; }
+.triggerValue { color: var(--text); font-size: 15px; font-weight: 500; white-space: nowrap; }
+.triggerIcon { font-size: 15px; opacity: 0.7; }
+
+.popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 300;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+.popupInner {
+  display: flex;
+}
+
+/* Calendar */
+.calendar {
+  padding: 12px;
+  width: 230px;
+}
+
+.calHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.monthLabel {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.navBtn {
+  width: 24px; height: 24px;
+  border-radius: 5px;
+  border: none;
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.navBtn:hover { background: var(--border); }
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  margin-bottom: 2px;
+}
+.weekdays span {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text2);
+  font-weight: 500;
+  padding: 2px 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.day {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  display: flex; align-items: center; justify-content: center;
+}
+.day:hover:not(:disabled) { background: var(--bg3); }
+.daySelected { background: var(--accent) !important; color: #fff; }
+.dayToday { font-weight: 700; color: var(--accent); }
+.dayToday.daySelected { color: #fff; }
+.dayOtherMonth { opacity: 0.3; }
+.dayPast { opacity: 0.2; cursor: not-allowed; }
+
+/* Time */
+.timeSide {
+  width: 130px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.timeHeader {
+  padding: 12px 10px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.timeInput {
+  margin: 0 8px 8px;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.timeInput:focus { border-color: var(--accent); }
+
+.timeSubHeader {
+  padding: 4px 10px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.timeList {
+  overflow-y: auto;
+  flex: 1;
+  max-height: 240px;
+  padding: 0 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.timeSlot {
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.1s, color 0.1s;
+  position: relative;
+}
+.timeSlot:hover { background: var(--bg3); color: var(--text); }
+.timeSelected { background: var(--accent) !important; color: #fff !important; }
+.timeSmart { color: var(--text); font-weight: 600; }
+.timeBusy { opacity: 0.4; cursor: not-allowed; }
+
+.smartDot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.timeSelected .smartDot { background: #fff; }
+
+.noonHint {
+  padding: 8px 12px;
+  background: rgba(123, 97, 255, 0.1);
+  border: 1px solid rgba(123, 97, 255, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--accent);
+}

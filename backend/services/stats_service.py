@@ -1,0 +1,140 @@
+from datetime import datetime, timedelta
+from typing import List
+import httpx
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models.post import Post, PostTarget, PostTargetStatus
+from models.channel import Channel, Platform
+from models.stats import PostStats, ChannelSnapshot
+
+VK_API = "https://api.vk.com/method"
+
+
+async def _vk(method: str, params: dict, token: str, version: str = "5.131") -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(f"{VK_API}/{method}", params={
+            **params, "access_token": token, "v": version,
+        })
+    return r.json()
+
+
+async def collect_vk_post_stats(target: PostTarget, db: Session):
+    """Fetch VK post metrics and save snapshot."""
+    ch = target.channel
+    cfg = ch.config_json or {}
+    token = cfg.get("access_token", "")
+    owner_id = cfg.get("owner_id", "")
+    if not token or not owner_id or not target.published_message_id:
+        return
+
+    post_ref = f"{owner_id}_{target.published_message_id}"
+    r = await _vk("wall.getById", {"posts": post_ref}, token, cfg.get("version", "5.131"))
+    if "response" not in r or not r["response"]:
+        return
+
+    p = r["response"][0]
+    stats = PostStats(
+        post_target_id=target.id,
+        captured_at=datetime.now(),
+        views=p.get("views", {}).get("count", 0),
+        likes=p.get("likes", {}).get("count", 0),
+        reposts=p.get("reposts", {}).get("count", 0),
+        comments=p.get("comments", {}).get("count", 0),
+        reactions=p.get("reaction", {}).get("count", 0) if isinstance(p.get("reaction"), dict) else 0,
+    )
+    db.add(stats)
+
+
+async def collect_vk_channel_subs(channel: Channel, db: Session):
+    """Fetch VK group subscriber count and save snapshot."""
+    cfg = channel.config_json or {}
+    token = cfg.get("access_token", "")
+    owner_id = cfg.get("owner_id", "")
+    if not token or not owner_id:
+        return
+
+    group_id = str(owner_id).lstrip("-")
+    r = await _vk("groups.getById", {
+        "group_id": group_id,
+        "fields": "members_count",
+    }, token, cfg.get("version", "5.131"))
+
+    members = 0
+    if "response" in r:
+        groups = r["response"].get("groups") if isinstance(r["response"], dict) else r["response"]
+        if groups and len(groups) > 0:
+            members = groups[0].get("members_count", 0)
+
+    snap = ChannelSnapshot(
+        channel_id=channel.id,
+        captured_at=datetime.now(),
+        subscribers=members,
+    )
+    db.add(snap)
+
+
+async def collect_tg_channel_subs(channel: Channel, db: Session):
+    """Fetch TG channel member count via Bot API."""
+    cfg = channel.config_json or {}
+    token = cfg.get("bot_token", "")
+    chat_id = cfg.get("chat_id", "")
+    if not token or not chat_id:
+        return
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(
+            f"https://api.telegram.org/bot{token}/getChatMemberCount",
+            params={"chat_id": chat_id},
+        )
+    data = r.json()
+    if not data.get("ok"):
+        return
+
+    snap = ChannelSnapshot(
+        channel_id=channel.id,
+        captured_at=datetime.now(),
+        subscribers=data["result"],
+    )
+    db.add(snap)
+
+
+async def run_post_stats_collection():
+    """Update metrics for posts published in the last 7 days."""
+    db: Session = SessionLocal()
+    try:
+        cutoff = datetime.now() - timedelta(days=7)
+        targets = db.query(PostTarget).filter(
+            PostTarget.status == PostTargetStatus.published,
+            PostTarget.published_at >= cutoff,
+        ).all()
+
+        for t in targets:
+            if not t.channel:
+                continue
+            try:
+                if t.channel.platform == Platform.vk:
+                    await collect_vk_post_stats(t, db)
+                # TG via Telethon будет добавлен позже
+            except Exception as e:
+                print(f"Failed to collect stats for target {t.id}: {e}")
+        db.commit()
+    finally:
+        db.close()
+
+
+async def run_subscribers_collection():
+    """Snapshot subscriber counts for all active channels."""
+    db: Session = SessionLocal()
+    try:
+        channels = db.query(Channel).filter(Channel.is_active == True).all()
+        for ch in channels:
+            try:
+                if ch.platform == Platform.vk:
+                    await collect_vk_channel_subs(ch, db)
+                elif ch.platform == Platform.tg:
+                    await collect_tg_channel_subs(ch, db)
+            except Exception as e:
+                print(f"Failed to snapshot {ch.id} ({ch.platform}): {e}")
+        db.commit()
+    finally:
+        db.close()
