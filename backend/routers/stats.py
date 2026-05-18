@@ -81,50 +81,43 @@ def _latest_stats_subquery(db: Session):
 @router.get("/overview", response_model=OverviewResponse)
 def overview(period_days: int = 30, db: Session = Depends(get_db)):
     since = datetime.now() - timedelta(days=period_days)
+
+    # тоталы по нашим постам (за период)
     targets = db.query(PostTarget).filter(
         PostTarget.status == PostTargetStatus.published,
         PostTarget.published_at >= since,
     ).all()
-
     latest = _latest_stats_subquery(db)
     total_views = total_likes = total_comments = 0
-    by_channel: Dict[int, dict] = {}
-
+    posts_per_channel: Dict[int, int] = {}
     for t in targets:
         s = latest.get(t.id)
-        if not s or not t.channel:
+        if t.channel:
+            posts_per_channel[t.channel_id] = posts_per_channel.get(t.channel_id, 0) + 1
+        if not s:
             continue
         total_views += s.views
         total_likes += s.likes
         total_comments += s.comments
 
-        agg = by_channel.setdefault(t.channel_id, {
-            "channel": t.channel, "views": 0, "likes": 0, "count": 0,
-        })
-        agg["views"] += s.views
-        agg["likes"] += s.likes
-        agg["count"] += 1
-
-    # latest subscriber counts
-    latest_subs = {}
-    for ch_id in by_channel:
+    # карточки каналов - все активные VK (TG пока без агрегатов, добавим с Telethon)
+    channels = db.query(Channel).filter(Channel.is_active == True).all()
+    channel_summaries: List[ChannelSummary] = []
+    for ch in channels:
+        # пока показываем только VK (для TG нужен Telethon)
+        if ch.platform != Platform.vk:
+            continue
         snap = db.query(ChannelSnapshot).filter(
-            ChannelSnapshot.channel_id == ch_id,
+            ChannelSnapshot.channel_id == ch.id,
         ).order_by(desc(ChannelSnapshot.captured_at)).first()
-        latest_subs[ch_id] = snap.subscribers if snap else 0
-
-    channel_summaries = []
-    for ch_id, agg in by_channel.items():
-        ch = agg["channel"]
-        count = agg["count"] or 1
         channel_summaries.append(ChannelSummary(
-            channel_id=ch_id,
+            channel_id=ch.id,
             name=ch.name,
             platform=ch.platform.value,
-            subscribers=latest_subs.get(ch_id, 0),
-            avg_views=agg["views"] // count,
-            avg_likes=agg["likes"] // count,
-            posts_count=agg["count"],
+            subscribers=snap.subscribers if snap else 0,
+            avg_views=snap.avg_views if snap else 0,
+            avg_likes=snap.avg_likes if snap else 0,
+            posts_count=posts_per_channel.get(ch.id, 0),
         ))
 
     return OverviewResponse(

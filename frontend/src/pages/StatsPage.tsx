@@ -32,10 +32,6 @@ export default function StatsPage() {
         </select>
       </div>
 
-      <div className={styles.notice}>
-        Статистика собирается только для VK и Telegram. У Instagram нужна сложная настройка Meta Business API, у Max публичного API нет.
-      </div>
-
       {/* Общие метрики */}
       <div className={styles.metricsRow}>
         <MetricCard label="Постов" value={overview?.total_posts ?? 0} />

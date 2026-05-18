@@ -46,18 +46,21 @@ async def collect_vk_post_stats(target: PostTarget, db: Session):
 
 
 async def collect_vk_channel_subs(channel: Channel, db: Session):
-    """Fetch VK group subscriber count and save snapshot."""
+    """Подписчики + агрегаты по всему каналу (последние 100 постов)."""
     cfg = channel.config_json or {}
     token = cfg.get("access_token", "")
     owner_id = cfg.get("owner_id", "")
     if not token or not owner_id:
         return
+    version = cfg.get("version", "5.131")
 
     group_id = str(owner_id).lstrip("-")
+
+    # 1. подписчики
     r = await _vk("groups.getById", {
         "group_id": group_id,
         "fields": "members_count",
-    }, token, cfg.get("version", "5.131"))
+    }, token, version)
 
     members = 0
     if "response" in r:
@@ -65,10 +68,36 @@ async def collect_vk_channel_subs(channel: Channel, db: Session):
         if groups and len(groups) > 0:
             members = groups[0].get("members_count", 0)
 
+    # 2. последние 100 постов канала - средние метрики
+    avg_views = avg_likes = avg_reposts = avg_comments = 0
+    posts_total = 0
+    try:
+        wall = await _vk("wall.get", {
+            "owner_id": owner_id,
+            "count": 100,
+            "filter": "owner",
+        }, token, version)
+        items = wall.get("response", {}).get("items", [])
+        # игнорируем закреплённые повторы и пустые
+        posts = [p for p in items if not p.get("is_pinned") or len(items) <= 1]
+        posts_total = len(posts)
+        if posts_total > 0:
+            avg_views = sum(p.get("views", {}).get("count", 0) for p in posts) // posts_total
+            avg_likes = sum(p.get("likes", {}).get("count", 0) for p in posts) // posts_total
+            avg_reposts = sum(p.get("reposts", {}).get("count", 0) for p in posts) // posts_total
+            avg_comments = sum(p.get("comments", {}).get("count", 0) for p in posts) // posts_total
+    except Exception as e:
+        print(f"[stats] vk wall.get failed for {channel.name}: {e}")
+
     snap = ChannelSnapshot(
         channel_id=channel.id,
         captured_at=datetime.now(),
         subscribers=members,
+        avg_views=avg_views,
+        avg_likes=avg_likes,
+        avg_reposts=avg_reposts,
+        avg_comments=avg_comments,
+        posts_total=posts_total,
     )
     db.add(snap)
 

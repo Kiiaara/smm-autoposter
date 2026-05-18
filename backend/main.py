@@ -20,6 +20,8 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # миграция: сделать reminders.send_at nullable (для авто-напоминаний)
     _migrate_reminders_send_at_nullable()
+    # миграция: новые колонки в channel_snapshots
+    _migrate_channel_snapshots_add_cols()
     # перенос whitelist из .env в БД при первом запуске
     from routers.auth import _bootstrap_allowed_from_env
     _bootstrap_allowed_from_env()
@@ -88,6 +90,24 @@ app.include_router(reminders.router)
 app.include_router(app_settings.router)
 app.include_router(stats.router)
 app.include_router(auth_router.router)
+
+
+def _migrate_channel_snapshots_add_cols():
+    """Добавляем avg_views/avg_likes/avg_reposts/avg_comments/posts_total если их нет."""
+    from sqlalchemy import text
+    new_cols = [
+        ("avg_views", "INTEGER DEFAULT 0"),
+        ("avg_likes", "INTEGER DEFAULT 0"),
+        ("avg_reposts", "INTEGER DEFAULT 0"),
+        ("avg_comments", "INTEGER DEFAULT 0"),
+        ("posts_total", "INTEGER DEFAULT 0"),
+    ]
+    with engine.begin() as conn:
+        existing = conn.execute(text("PRAGMA table_info(channel_snapshots)")).fetchall()
+        existing_names = {row[1] for row in existing}
+        for col, ddl in new_cols:
+            if col not in existing_names:
+                conn.execute(text(f"ALTER TABLE channel_snapshots ADD COLUMN {col} {ddl}"))
 
 
 def _migrate_reminders_send_at_nullable():

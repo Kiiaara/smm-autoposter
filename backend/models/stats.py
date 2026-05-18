@@ -21,13 +21,19 @@ class PostStats(Base):
 
 
 class ChannelSnapshot(Base):
-    """Daily snapshot of channel subscriber count."""
+    """Daily snapshot of channel-wide metrics (not just our posts)."""
     __tablename__ = "channel_snapshots"
 
     id = Column(Integer, primary_key=True)
     channel_id = Column(Integer, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True)
     captured_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
     subscribers = Column(Integer, default=0)
+    # агрегаты по всем постам канала (последние ~50 постов или за период)
+    avg_views = Column(Integer, default=0)
+    avg_likes = Column(Integer, default=0)
+    avg_reposts = Column(Integer, default=0)
+    avg_comments = Column(Integer, default=0)
+    posts_total = Column(Integer, default=0)  # сколько постов учтено в среднем
 
     channel = relationship("Channel")
 
