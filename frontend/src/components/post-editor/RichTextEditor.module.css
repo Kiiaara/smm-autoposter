@@ -25,12 +25,13 @@
   overflow: hidden;
 }
 
-.highlight strong { color: transparent; font-weight: 700; background: rgba(255,255,255,0.08); border-radius: 2px; }
-.highlight em { color: transparent; font-style: italic; background: rgba(255,255,255,0.05); border-radius: 2px; }
-.highlight s { color: transparent; background: rgba(255,255,255,0.05); border-radius: 2px; }
-.highlight code { color: transparent; background: rgba(123,97,255,0.15); border-radius: 3px; font-family: monospace; }
-.highlight .spoiler { color: transparent; background: rgba(255,255,255,0.1); border-radius: 3px; }
-.highlight a { color: transparent; background: rgba(41,182,246,0.15); border-radius: 2px; }
+.highlight strong { color: transparent; font-weight: 700; background: rgba(255,255,255,0.12); border-radius: 2px; }
+.highlight em { color: transparent; font-style: italic; background: rgba(255,255,255,0.08); border-radius: 2px; }
+.highlight u { color: transparent; background: rgba(123,97,255,0.18); border-radius: 2px; border-bottom: 2px solid rgba(123,97,255,0.7); }
+.highlight s { color: transparent; background: rgba(255,255,255,0.08); border-radius: 2px; text-decoration: line-through; text-decoration-color: rgba(231,76,60,0.8); text-decoration-thickness: 2px; }
+.highlight code { color: transparent; background: rgba(123,97,255,0.2); border-radius: 3px; font-family: monospace; }
+.highlight .spoiler { color: transparent; background: rgba(255,255,255,0.18); border-radius: 3px; }
+.highlight a { color: transparent; background: rgba(41,182,246,0.3); border-radius: 2px; border-bottom: 2px solid rgba(41,182,246,1); }
 
 .textarea {
   position: relative;

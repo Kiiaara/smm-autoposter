@@ -76,8 +76,15 @@ export default function RichTextEditor() {
           className={styles.textarea}
           value={textTg}
           onChange={e => {
-            setTextTg(e.target.value)
-            // shift ranges on text change would require complex logic; reset on major changes
+            const newText = e.target.value
+            const oldText = textTg
+            // вычисляем точку начала изменения и дельту длины, сдвигаем ranges
+            const cursorPos = e.target.selectionStart
+            const delta = newText.length - oldText.length
+            const changeStart = cursorPos - Math.max(delta, 0)
+            const shifted = shiftRanges(textTgRanges, changeStart, delta, newText.length)
+            setTextTg(newText)
+            if (shifted !== textTgRanges) setTextTgRanges(shifted)
           }}
           onKeyDown={e => {
             if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
@@ -135,4 +142,34 @@ function buildHighlightedPreview(text: string, ranges: FormatRange[]): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+}
+
+// сдвигаем ranges при изменении текста: всё что после changeStart смещается на delta
+function shiftRanges(ranges: FormatRange[], changeStart: number, delta: number, newLen: number): FormatRange[] {
+  if (delta === 0) return ranges
+  const result: FormatRange[] = []
+  for (const r of ranges) {
+    let { start, end } = r
+    if (end <= changeStart) {
+      // изменение полностью после range - не трогаем
+      result.push(r)
+      continue
+    }
+    if (start >= changeStart - delta && delta < 0) {
+      // удалили кусок, начинающийся ДО range - сдвигаем start/end назад
+      start = Math.max(changeStart, start + delta)
+      end = Math.max(changeStart, end + delta)
+    } else if (start >= changeStart) {
+      // изменение полностью до range - сдвигаем обе границы
+      start += delta
+      end += delta
+    } else {
+      // изменение внутри range - расширяем/сжимаем end
+      end += delta
+    }
+    start = Math.max(0, Math.min(start, newLen))
+    end = Math.max(0, Math.min(end, newLen))
+    if (end > start) result.push({ ...r, start, end })
+  }
+  return result
 }
