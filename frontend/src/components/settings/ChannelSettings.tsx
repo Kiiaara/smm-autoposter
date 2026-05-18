@@ -5,14 +5,53 @@ import { getChannels, createChannel, updateChannel, deleteChannel, testChannel }
 import type { Platform, Channel } from '../../types'
 import styles from './ChannelSettings.module.css'
 
-const PLATFORM_FIELDS: Record<Platform, { key: string; label: string; placeholder: string; hint?: string }[]> = {
+import type { ReactNode } from 'react'
+
+const VK_OAUTH_URL = 'https://oauth.vk.com/authorize?client_id=2685278&scope=wall,photos,groups,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html'
+
+interface FieldDef {
+  key: string
+  label: string
+  placeholder: string
+  hint?: ReactNode
+}
+
+const PLATFORM_FIELDS: Record<Platform, FieldDef[]> = {
   tg: [
-    { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...' },
-    { key: 'channel', label: 'Канал', placeholder: '@mychannel или https://t.me/mychannel', hint: 'Бот должен быть администратором канала' },
+    {
+      key: 'bot_token',
+      label: 'Bot Token',
+      placeholder: '123456:ABC-DEF...',
+      hint: (
+        <>
+          Создай бота через <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> командой <code>/newbot</code> - он пришлёт токен.
+        </>
+      ),
+    },
+    {
+      key: 'channel',
+      label: 'Канал',
+      placeholder: '@mychannel или https://t.me/mychannel',
+      hint: 'Добавь бота администратором канала (Управление каналом → Администраторы → Добавить → дать право "Публикация сообщений").',
+    },
   ],
   vk: [
-    { key: 'access_token', label: 'Access Token', placeholder: 'vk1.a.xxx...' },
-    { key: 'owner_id', label: 'Owner ID (группа со знаком минус)', placeholder: '-12345678' },
+    {
+      key: 'access_token',
+      label: 'Access Token',
+      placeholder: 'vk1.a.xxx...',
+      hint: (
+        <>
+          <a href={VK_OAUTH_URL} target="_blank" rel="noopener">Открой эту ссылку</a> и подтверди доступ. После этого в адресной строке появится URL вида <code>...#access_token=vk1.a.XXX...&expires_in=0...</code> — скопируй кусок между <code>access_token=</code> и <code>&expires_in</code>. Должен начинаться на <code>vk1.a.</code>
+        </>
+      ),
+    },
+    {
+      key: 'owner_id',
+      label: 'Owner ID (группа со знаком минус)',
+      placeholder: '-12345678',
+      hint: 'Открой свою группу ВК, нажми на любой пост - в адресной строке будет вида vk.com/wall-12345678_1. Бери число со знаком минус (например -12345678).',
+    },
   ],
   ig: [
     { key: 'page_id', label: 'Page ID', placeholder: '12345678' },

@@ -9,4 +9,21 @@
 .itemActions { display: flex; gap: 8px; }
 .empty { color: var(--text2); font-size: var(--fs-sm); }
 .fieldGroup { display: flex; flex-direction: column; gap: 5px; }
-.fieldHint { font-size: var(--fs-xs); color: var(--text2); padding-left: 2px; }
+.fieldHint {
+  font-size: var(--fs-xs);
+  color: var(--text2);
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  line-height: 1.5;
+}
+.fieldHint a { color: var(--accent); text-decoration: underline; }
+.fieldHint a:hover { text-decoration: none; }
+.fieldHint code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  word-break: break-all;
+}
