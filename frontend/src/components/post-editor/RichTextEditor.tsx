@@ -50,20 +50,23 @@ export default function RichTextEditor() {
     setTextTgRanges([...other, newRange].sort((a, b) => a.start - b.start))
   }, [textTg, textTgRanges, setTextTgRanges])
 
-  // глобальный слушатель горячих клавиш, активный пока textarea в фокусе
+  // глобальный слушатель горячих клавиш, активный пока textarea в фокусе.
+  // Используем e.code (физическая клавиша), чтобы Ctrl+B работал и на русской раскладке.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const focused = document.activeElement === textareaRef.current
-      const isCtrl = e.ctrlKey || e.metaKey
-      if (!isCtrl || e.altKey || e.shiftKey) return
-      const key = e.key.toLowerCase()
-      const map: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline', s: 'strike' }
-      if (!map[key]) return
-      console.log('[RichTextEditor] hotkey', { key, focused, sel: textareaRef.current ? [textareaRef.current.selectionStart, textareaRef.current.selectionEnd] : null })
-      if (!focused) return
+      if (document.activeElement !== textareaRef.current) return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      const codeMap: Record<string, string> = {
+        KeyB: 'bold',
+        KeyI: 'italic',
+        KeyU: 'underline',
+        KeyS: 'strike',
+      }
+      const fmt = codeMap[e.code]
+      if (!fmt) return
       e.preventDefault()
       e.stopPropagation()
-      applyFormat(map[key])
+      applyFormat(fmt)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
