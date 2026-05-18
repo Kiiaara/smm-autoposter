@@ -12,6 +12,23 @@ export default function PlainTextEditor() {
     setTextPlain(textTg)
   }
 
+  function attachVkArticle() {
+    const url = prompt(
+      'Вставь URL статьи VK\n\n' +
+      'Чтобы создать: открой свою группу VK → "+ Запись" → справа выбери "Статья" → напиши и опубликуй.\n' +
+      'Потом скопируй URL вида https://vk.com/@group_name-slug'
+    )
+    if (!url) return
+    const trimmed = url.trim()
+    if (!trimmed.includes('vk.com/@')) {
+      alert('Это не похоже на URL статьи VK. Должен быть вида https://vk.com/@.../...')
+      return
+    }
+    // добавляем URL в конец текста (с переводом строки если текст не пустой)
+    const separator = textPlain && !textPlain.endsWith('\n') ? '\n\n' : ''
+    setTextPlain(textPlain + separator + trimmed)
+  }
+
   function insertEmoji(emoji: string) {
     const el = textareaRef.current
     if (!el) {
@@ -34,6 +51,14 @@ export default function PlainTextEditor() {
       <div className={styles.toolbar}>
         <button type="button" className={styles.toolBtn} onClick={() => setShowEmoji(v => !v)} title="Эмодзи">
           😊
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={attachVkArticle}
+          title="Прикрепить статью VK (создаётся в браузере VK, сюда вставляем URL)"
+        >
+          + Статья VK
         </button>
         {textTg && (
           <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={copyFromTg}>
