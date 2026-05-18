@@ -111,6 +111,7 @@ function buildHighlightedPreview(text: string, ranges: FormatRange[]): string {
     switch (r.type) {
       case 'bold': result += `<strong>${chunk}</strong>`; break
       case 'italic': result += `<em>${chunk}</em>`; break
+      case 'underline': result += `<u>${chunk}</u>`; break
       case 'strike': result += `<s>${chunk}</s>`; break
       case 'code': result += `<code>${chunk}</code>`; break
       case 'spoiler': result += `<span class="spoiler">${chunk}</span>`; break

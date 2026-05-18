@@ -5,7 +5,7 @@ export type PostTargetStatus = 'pending' | 'published' | 'failed'
 export interface FormatRange {
   start: number
   end: number
-  type: 'bold' | 'italic' | 'strike' | 'code' | 'spoiler' | 'link'
+  type: 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'spoiler' | 'link'
   url?: string
 }
 

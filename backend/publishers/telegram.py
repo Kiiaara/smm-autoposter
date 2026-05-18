@@ -24,6 +24,7 @@ def ranges_to_md2(text: str, ranges: List[Dict]) -> str:
     MD2_MARKERS = {
         "bold": ("*", "*"),
         "italic": ("_", "_"),
+        "underline": ("__", "__"),
         "strike": ("~", "~"),
         "code": ("`", "`"),
         "spoiler": ("||", "||"),

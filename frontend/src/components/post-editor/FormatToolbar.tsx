@@ -1,19 +1,20 @@
 import styles from './FormatToolbar.module.css'
 
-type FormatType = 'bold' | 'italic' | 'strike' | 'code' | 'spoiler' | 'link'
+type FormatType = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'spoiler' | 'link'
 
 interface Props {
   onFormat: (type: FormatType, url?: string) => void
   onEmoji: () => void
 }
 
-const BUTTONS: { type: FormatType; label: string; title: string }[] = [
-  { type: 'bold', label: 'B', title: 'Жирный' },
-  { type: 'italic', label: 'I', title: 'Курсив' },
-  { type: 'strike', label: 'S', title: 'Зачёркнутый' },
-  { type: 'code', label: '<>', title: 'Код' },
+const BUTTONS: { type: FormatType; label: string; title: string; style?: React.CSSProperties }[] = [
+  { type: 'bold', label: 'B', title: 'Жирный (выдели → жми ещё раз чтобы снять)', style: { fontWeight: 700 } },
+  { type: 'italic', label: 'I', title: 'Курсив', style: { fontStyle: 'italic' } },
+  { type: 'underline', label: 'U', title: 'Подчёркнутый', style: { textDecoration: 'underline' } },
+  { type: 'strike', label: 'S', title: 'Зачёркнутый', style: { textDecoration: 'line-through' } },
+  { type: 'code', label: '</>', title: 'Моноширинный код', style: { fontFamily: 'monospace' } },
   { type: 'spoiler', label: '||', title: 'Спойлер' },
-  { type: 'link', label: 'Ссылка', title: 'Вставить ссылку' },
+  { type: 'link', label: '🔗', title: 'Вставить ссылку' },
 ]
 
 export default function FormatToolbar({ onFormat, onEmoji }: Props) {
@@ -30,8 +31,9 @@ export default function FormatToolbar({ onFormat, onEmoji }: Props) {
           type="button"
           className={styles.btn}
           title={b.title}
+          onMouseDown={e => e.preventDefault()}
           onClick={() => b.type === 'link' ? handleLink() : onFormat(b.type)}
-          style={b.type === 'bold' ? { fontWeight: 700 } : b.type === 'italic' ? { fontStyle: 'italic' } : {}}
+          style={b.style}
         >
           {b.label}
         </button>
