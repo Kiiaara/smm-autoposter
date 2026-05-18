@@ -2,14 +2,16 @@ import { useState } from 'react'
 import ChannelSettings from '../components/settings/ChannelSettings'
 import SlotSettings from '../components/settings/SlotSettings'
 import ReminderBotSettings from '../components/settings/ReminderBotSettings'
+import AccessSettings from '../components/settings/AccessSettings'
 import styles from './SettingsPage.module.css'
 
-type Tab = 'channels' | 'schedule' | 'reminders'
+type Tab = 'channels' | 'schedule' | 'reminders' | 'access'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'channels', label: 'Каналы' },
   { id: 'schedule', label: 'Расписание' },
   { id: 'reminders', label: 'Бот напоминаний' },
+  { id: 'access', label: 'Доступ' },
 ]
 
 export default function SettingsPage() {
@@ -32,6 +34,7 @@ export default function SettingsPage() {
         {tab === 'channels' && <ChannelSettings />}
         {tab === 'schedule' && <SlotSettings />}
         {tab === 'reminders' && <ReminderBotSettings />}
+        {tab === 'access' && <AccessSettings />}
       </div>
     </div>
   )

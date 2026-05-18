@@ -20,6 +20,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # миграция: сделать reminders.send_at nullable (для авто-напоминаний)
     _migrate_reminders_send_at_nullable()
+    # перенос whitelist из .env в БД при первом запуске
+    from routers.auth import _bootstrap_allowed_from_env
+    _bootstrap_allowed_from_env()
     # ensure uploads dir exists
     os.makedirs(settings.upload_dir, exist_ok=True)
     # start background scheduler
@@ -52,8 +55,8 @@ async def auth_middleware(request: Request, call_next):
     # пропускаем public пути
     if path in PUBLIC_PATHS:
         return await call_next(request)
-    # если auth не настроен (нет whitelist) - пропускаем всё (например для локальной разработки)
-    if not settings.auth_allowed_tg_ids:
+    # если auth-бот не настроен (локалка) - пропускаем
+    if not settings.auth_bot_token:
         return await call_next(request)
 
     token = request.cookies.get(SESSION_COOKIE)
@@ -64,6 +67,10 @@ async def auth_middleware(request: Request, call_next):
         sess = db.get(models.AuthSession, token)
         if not sess or sess.expires_at < datetime.now():
             return JSONResponse({"detail": "Сессия истекла"}, status_code=401)
+        # проверка что юзер всё ещё в whitelist (мог быть удалён админом)
+        allowed = db.get(models.AllowedUser, sess.tg_id)
+        if not allowed:
+            return JSONResponse({"detail": "Доступ отозван"}, status_code=403)
     finally:
         db.close()
     return await call_next(request)

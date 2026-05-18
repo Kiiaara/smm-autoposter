@@ -4,6 +4,7 @@ from .schedule_slot import ScheduleSlot
 from .reminder import Reminder
 from .stats import PostStats, ChannelSnapshot
 from .auth_session import AuthSession
+from .allowed_user import AllowedUser
 
 __all__ = [
     "Post", "PostTarget", "PostStatus", "PostTargetStatus",
@@ -12,4 +13,5 @@ __all__ = [
     "Reminder",
     "PostStats", "ChannelSnapshot",
     "AuthSession",
+    "AllowedUser",
 ]
