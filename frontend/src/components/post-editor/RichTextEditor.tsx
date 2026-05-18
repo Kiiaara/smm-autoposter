@@ -79,6 +79,15 @@ export default function RichTextEditor() {
             setTextTg(e.target.value)
             // shift ranges on text change would require complex logic; reset on major changes
           }}
+          onKeyDown={e => {
+            if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+            const key = e.key.toLowerCase()
+            const map: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline', s: 'strike' }
+            if (map[key]) {
+              e.preventDefault()
+              applyFormat(map[key])
+            }
+          }}
           placeholder="Текст для Telegram (с форматированием)..."
           rows={8}
           spellCheck
