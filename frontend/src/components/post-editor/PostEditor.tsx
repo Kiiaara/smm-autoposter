@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { format, startOfWeek, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createPost, updatePost } from '../../api/posts'
@@ -18,6 +19,18 @@ import styles from './PostEditor.module.css'
 
 interface Props {
   editPostId?: number
+}
+
+// собираем URL календаря с week-параметром, соответствующим дате поста
+function buildCalendarUrl(scheduledAt?: string | null): string {
+  if (!scheduledAt) return '/'
+  try {
+    const d = typeof scheduledAt === 'string' ? parseISO(scheduledAt) : scheduledAt
+    const weekStart = startOfWeek(d, { weekStartsOn: 1 })
+    return `/?week=${format(weekStart, 'yyyy-MM-dd')}`
+  } catch {
+    return '/'
+  }
 }
 
 export default function PostEditor({ editPostId }: Props) {
@@ -78,7 +91,7 @@ export default function PostEditor({ editPostId }: Props) {
       qc.invalidateQueries({ queryKey: ['posts'] })
       store.reset()
       toast.success(status === 'draft' ? 'Черновик сохранён' : 'Пост запланирован!')
-      navigate('/')
+      navigate(buildCalendarUrl(post.scheduled_at))
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? 'Ошибка'),
   })
@@ -120,7 +133,7 @@ export default function PostEditor({ editPostId }: Props) {
       qc.invalidateQueries({ queryKey: ['posts'] })
       store.reset()
       toast.success('Публикуется...')
-      navigate('/')
+      navigate(buildCalendarUrl(store.scheduledAt))
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? 'Ошибка публикации')
     }
