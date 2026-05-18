@@ -53,11 +53,14 @@ export default function RichTextEditor() {
   // глобальный слушатель горячих клавиш, активный пока textarea в фокусе
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (document.activeElement !== textareaRef.current) return
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      const focused = document.activeElement === textareaRef.current
+      const isCtrl = e.ctrlKey || e.metaKey
+      if (!isCtrl || e.altKey || e.shiftKey) return
       const key = e.key.toLowerCase()
       const map: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline', s: 'strike' }
       if (!map[key]) return
+      console.log('[RichTextEditor] hotkey', { key, focused, sel: textareaRef.current ? [textareaRef.current.selectionStart, textareaRef.current.selectionEnd] : null })
+      if (!focused) return
       e.preventDefault()
       e.stopPropagation()
       applyFormat(map[key])
