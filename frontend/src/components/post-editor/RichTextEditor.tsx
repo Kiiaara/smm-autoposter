@@ -16,12 +16,38 @@ export default function RichTextEditor() {
     const { selectionStart: start, selectionEnd: end } = el
     if (start === end && type !== 'link') return
 
-    const newRange: FormatRange = { start, end, type: type as FormatRange['type'] }
-    if (url) newRange.url = url
+    // для link не делаем тоггл - просто заменяем
+    if (type === 'link') {
+      const filtered = textTgRanges.filter(r => !(r.type === type && r.start < end && r.end > start))
+      const newRange: FormatRange = { start, end, type: type as FormatRange['type'], url }
+      setTextTgRanges([...filtered, newRange].sort((a, b) => a.start - b.start))
+      return
+    }
 
-    // remove overlapping ranges of same type, then add new one
-    const merged = textTgRanges.filter(r => !(r.type === type && r.start < end && r.end > start))
-    setTextTgRanges([...merged, newRange].sort((a, b) => a.start - b.start))
+    // тоггл: если выделение полностью покрыто range того же типа - снимаем форматирование
+    const fullyCovered = textTgRanges.some(r => r.type === type && r.start <= start && r.end >= end)
+    if (fullyCovered) {
+      const result: FormatRange[] = []
+      for (const r of textTgRanges) {
+        if (r.type !== type || r.end <= start || r.start >= end) {
+          result.push(r)
+          continue
+        }
+        // вырезаем кусок [start, end] из range r
+        if (r.start < start) result.push({ ...r, start: r.start, end: start })
+        if (r.end > end) result.push({ ...r, start: end, end: r.end })
+      }
+      setTextTgRanges(result.sort((a, b) => a.start - b.start))
+      return
+    }
+
+    // иначе - добавляем (и сливаем с пересекающимися того же типа в один большой range)
+    const overlapping = textTgRanges.filter(r => r.type === type && r.start <= end && r.end >= start)
+    const other = textTgRanges.filter(r => !(r.type === type && r.start <= end && r.end >= start))
+    const mergedStart = Math.min(start, ...overlapping.map(r => r.start))
+    const mergedEnd = Math.max(end, ...overlapping.map(r => r.end))
+    const newRange: FormatRange = { start: mergedStart, end: mergedEnd, type: type as FormatRange['type'] }
+    setTextTgRanges([...other, newRange].sort((a, b) => a.start - b.start))
   }, [textTg, textTgRanges, setTextTgRanges])
 
   function insertEmoji(emoji: string) {
