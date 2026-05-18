@@ -141,9 +141,25 @@ function gridClass(n: number) {
   return styles.many
 }
 
+// извлекаем URL статьи VK из текста + slug для заголовка
+function extractVkArticle(text: string): { url: string; slug: string } | null {
+  if (!text) return null
+  const match = text.match(/https?:\/\/(?:m\.)?vk\.com\/@[^\s]+/i)
+  if (!match) return null
+  const url = match[0]
+  // slug = всё после последнего "-" или после "@..."
+  const slugRaw = url.split('vk.com/@')[1] || ''
+  // делаем читаемое название из slug: убираем префикс "group-", меняем "-" на пробелы
+  const slug = slugRaw.split('-').slice(1).join(' ') || slugRaw.replace(/-/g, ' ')
+  return { url, slug: slug.charAt(0).toUpperCase() + slug.slice(1) }
+}
+
 // ── VKontakte (mobile) ────────────────────────────
 function VkPreview({ title, text, media, poll, channelName }: any) {
   const initial = (channelName || 'Г')[0].toUpperCase()
+  const article = extractVkArticle(text)
+  // текст без URL статьи (если она была)
+  const cleanText = article ? text.replace(article.url, '').trim() : text
   return (
     <div className={styles.vkCard}>
       <div className={styles.vkHeader}>
@@ -163,13 +179,25 @@ function VkPreview({ title, text, media, poll, channelName }: any) {
           {media.length > 1 && <div className={styles.vkImgCount}>1/{media.length}</div>}
         </div>
       )}
-      {(title || text) && (
+      {(title || cleanText) && (
         <div className={styles.vkText}>
           {title && <div className={styles.vkTitle}>{title}</div>}
-          {text}
+          {cleanText}
         </div>
       )}
-      {!title && !text && !media?.length && <div className={styles.vkText} style={{ color: '#bbb' }}>Текст поста...</div>}
+      {article && (
+        <div className={styles.vkArticle}>
+          <div className={styles.vkArticleCover}>
+            <span className={styles.vkArticleIcon}>📄</span>
+          </div>
+          <div className={styles.vkArticleBody}>
+            <div className={styles.vkArticleLabel}>Статья</div>
+            <div className={styles.vkArticleTitle}>{article.slug || 'Статья VK'}</div>
+            <div className={styles.vkArticleHost}>vk.com</div>
+          </div>
+        </div>
+      )}
+      {!title && !cleanText && !media?.length && !article && <div className={styles.vkText} style={{ color: '#bbb' }}>Текст поста...</div>}
       {poll && (
         <div className={styles.vkPoll}>
           <div className={styles.vkPollQ}>{poll.question || 'Вопрос опроса'}</div>
