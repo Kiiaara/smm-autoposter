@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     reminder_bot_token: str = ""
     reminder_chat_id: str = ""
 
+    # TG-логин: бот через которого логинимся (домен должен быть привязан к нему в BotFather)
+    # обычно тот же что reminder_bot_token
+    auth_bot_token: str = ""
+    # белый список tg_id через запятую: "327410144,123456789"
+    auth_allowed_tg_ids: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

@@ -1,14 +1,17 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from datetime import datetime
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
-from database import engine, Base
+from database import engine, Base, SessionLocal
 import models  # ensure all models are registered
 from scheduler import start_scheduler, stop_scheduler
-from routers import posts, channels, schedule_slots, upload, calendar, reminders, app_settings, stats
+from routers import posts, channels, schedule_slots, upload, calendar, reminders, app_settings, stats, auth as auth_router
+from routers.auth import SESSION_COOKIE
 
 
 @asynccontextmanager
@@ -35,6 +38,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Auth middleware: блокируем все /api/* кроме whitelist
+PUBLIC_PATHS = {"/api/health", "/api/auth/telegram", "/api/auth/me", "/api/auth/logout", "/api/auth/config"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # пропускаем не-api запросы (фронт сам разрулит на /login)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    # пропускаем public пути
+    if path in PUBLIC_PATHS:
+        return await call_next(request)
+    # если auth не настроен (нет whitelist) - пропускаем всё (например для локальной разработки)
+    if not settings.auth_allowed_tg_ids:
+        return await call_next(request)
+
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return JSONResponse({"detail": "Не авторизован"}, status_code=401)
+    db = SessionLocal()
+    try:
+        sess = db.get(models.AuthSession, token)
+        if not sess or sess.expires_at < datetime.now():
+            return JSONResponse({"detail": "Сессия истекла"}, status_code=401)
+    finally:
+        db.close()
+    return await call_next(request)
+
 # serve uploaded media
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
@@ -47,6 +80,7 @@ app.include_router(calendar.router)
 app.include_router(reminders.router)
 app.include_router(app_settings.router)
 app.include_router(stats.router)
+app.include_router(auth_router.router)
 
 
 def _migrate_reminders_send_at_nullable():
