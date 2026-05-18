@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import EmojiPickerReact from 'emoji-picker-react'
 import type { FormatRange } from '../../types'
 import { useEditorStore } from '../../store/editorStore'
@@ -50,6 +50,22 @@ export default function RichTextEditor() {
     setTextTgRanges([...other, newRange].sort((a, b) => a.start - b.start))
   }, [textTg, textTgRanges, setTextTgRanges])
 
+  // глобальный слушатель горячих клавиш, активный пока textarea в фокусе
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (document.activeElement !== textareaRef.current) return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      const key = e.key.toLowerCase()
+      const map: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline', s: 'strike' }
+      if (!map[key]) return
+      e.preventDefault()
+      e.stopPropagation()
+      applyFormat(map[key])
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [applyFormat])
+
   function insertEmoji(emoji: string) {
     const el = textareaRef.current
     if (!el) return
@@ -85,15 +101,6 @@ export default function RichTextEditor() {
             const shifted = shiftRanges(textTgRanges, changeStart, delta, newText.length)
             setTextTg(newText)
             if (shifted !== textTgRanges) setTextTgRanges(shifted)
-          }}
-          onKeyDown={e => {
-            if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
-            const key = e.key.toLowerCase()
-            const map: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline', s: 'strike' }
-            if (map[key]) {
-              e.preventDefault()
-              applyFormat(map[key])
-            }
           }}
           placeholder="Текст для Telegram (с форматированием)..."
           rows={8}
