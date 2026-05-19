@@ -99,6 +99,25 @@ async def send_due_reminders():
         db.close()
 
 
+async def send_noon_post_links(post_id: int, post_title: str | None = None):
+    """Авто-сообщение для постов опубликованных в 12:00 - сразу шлёт ссылки."""
+    token = settings.reminder_bot_token
+    chat_id = settings.reminder_chat_id
+    if not token or not chat_id:
+        return
+
+    db: Session = SessionLocal()
+    try:
+        status_block = _build_status_block(db, post_id)
+        if not status_block:
+            return
+        title = escape(post_title) if post_title else "Полуденный пост"
+        message = f"🕛 <b>{title}</b> опубликован" + "\n" + status_block
+        await send_reminder(token, chat_id, message, parse_mode="HTML")
+    finally:
+        db.close()
+
+
 async def send_publish_failure_alert(post_id: int, post_title: str | None = None):
     """Мгновенный пинг при ошибках публикации (независимо от reminder'ов)."""
     token = settings.reminder_bot_token

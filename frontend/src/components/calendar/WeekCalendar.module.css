@@ -8,6 +8,16 @@
   flex: 1;
 }
 
+@media (max-width: 768px) {
+  .board {
+    padding: 10px;
+    gap: 8px;
+    grid-template-columns: repeat(7, 75vw);
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 .column {
   display: flex;
   flex-direction: column;

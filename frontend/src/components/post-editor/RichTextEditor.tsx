@@ -78,9 +78,8 @@ export default function RichTextEditor() {
     const pos = el.selectionStart
     const end = el.selectionEnd
     const newText = textTg.slice(0, pos) + emoji + textTg.slice(end)
-    // сдвигаем ranges: вставка эмодзи длиной emoji.length в позиции pos
-    const delta = emoji.length - (end - pos)
-    const shifted = shiftRanges(textTgRanges, pos, delta, newText.length)
+    // удалили (end-pos) символов с позиции pos, вставили emoji.length
+    const shifted = shiftRangesPrecise(textTgRanges, pos, end - pos, emoji.length, newText.length)
     setTextTg(newText)
     if (shifted !== textTgRanges) setTextTgRanges(shifted)
     setShowEmoji(false)
@@ -105,11 +104,9 @@ export default function RichTextEditor() {
           onChange={e => {
             const newText = e.target.value
             const oldText = textTg
-            // вычисляем точку начала изменения и дельту длины, сдвигаем ranges
-            const cursorPos = e.target.selectionStart
-            const delta = newText.length - oldText.length
-            const changeStart = cursorPos - Math.max(delta, 0)
-            const shifted = shiftRanges(textTgRanges, changeStart, delta, newText.length)
+            // точный diff через общий префикс/суффикс
+            const { start, removed, inserted } = diffTexts(oldText, newText)
+            const shifted = shiftRangesPrecise(textTgRanges, start, removed, inserted, newText.length)
             setTextTg(newText)
             if (shifted !== textTgRanges) setTextTgRanges(shifted)
           }}
@@ -164,32 +161,57 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
 }
 
-// сдвигаем ranges при изменении текста: всё что после changeStart смещается на delta
-function shiftRanges(ranges: FormatRange[], changeStart: number, delta: number, newLen: number): FormatRange[] {
-  if (delta === 0) return ranges
+// Находим точный diff между старым и новым текстом через общий префикс и суффикс.
+// Возвращает: позиция изменения, сколько удалено, сколько вставлено.
+function diffTexts(oldText: string, newText: string): { start: number; removed: number; inserted: number } {
+  if (oldText === newText) return { start: 0, removed: 0, inserted: 0 }
+  // общий префикс
+  let start = 0
+  const maxStart = Math.min(oldText.length, newText.length)
+  while (start < maxStart && oldText[start] === newText[start]) start++
+  // общий суффикс (но не залезаем в уже сматченный префикс)
+  let oldEnd = oldText.length
+  let newEnd = newText.length
+  while (oldEnd > start && newEnd > start && oldText[oldEnd - 1] === newText[newEnd - 1]) {
+    oldEnd--
+    newEnd--
+  }
+  return { start, removed: oldEnd - start, inserted: newEnd - start }
+}
+
+// Точный сдвиг ranges при замене [start, start+removed) на текст длины inserted.
+// Каждая граница r.start/r.end независимо отображается через mapPoint.
+function shiftRangesPrecise(
+  ranges: FormatRange[],
+  changeStart: number,
+  removed: number,
+  inserted: number,
+  newLen: number,
+): FormatRange[] {
+  if (removed === 0 && inserted === 0) return ranges
+  const changeEnd = changeStart + removed
+  const delta = inserted - removed
+
+  function mapPoint(p: number, isEnd: boolean): number {
+    // граница до зоны изменения - не сдвигается
+    if (p <= changeStart) return p
+    // граница в зоне удаления:
+    //   - для start: схлопывается к началу изменения (т.к. содержимое удалено)
+    //   - для end:   тоже схлопывается, чтобы не "захватить" вставленное
+    if (p <= changeEnd) return changeStart
+    // граница после зоны изменения - сдвигается на delta
+    return p + delta
+  }
+
   const result: FormatRange[] = []
   for (const r of ranges) {
-    let { start, end } = r
-    if (end <= changeStart) {
-      // изменение полностью после range - не трогаем
-      result.push(r)
-      continue
+    const start = mapPoint(r.start, false)
+    const end = mapPoint(r.end, true)
+    const clampedStart = Math.max(0, Math.min(start, newLen))
+    const clampedEnd = Math.max(0, Math.min(end, newLen))
+    if (clampedEnd > clampedStart) {
+      result.push({ ...r, start: clampedStart, end: clampedEnd })
     }
-    if (start >= changeStart - delta && delta < 0) {
-      // удалили кусок, начинающийся ДО range - сдвигаем start/end назад
-      start = Math.max(changeStart, start + delta)
-      end = Math.max(changeStart, end + delta)
-    } else if (start >= changeStart) {
-      // изменение полностью до range - сдвигаем обе границы
-      start += delta
-      end += delta
-    } else {
-      // изменение внутри range - расширяем/сжимаем end
-      end += delta
-    }
-    start = Math.max(0, Math.min(start, newLen))
-    end = Math.max(0, Math.min(end, newLen))
-    if (end > start) result.push({ ...r, start, end })
   }
   return result
 }

@@ -34,3 +34,28 @@
 
 .links a:hover { color: var(--text); background: var(--bg3); }
 .links a.active { color: var(--text); background: var(--bg3); }
+
+@media (max-width: 768px) {
+  .nav {
+    gap: 8px;
+    padding: 0 10px;
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .logo { font-size: var(--fs-base); }
+  .links {
+    width: 100%;
+    order: 3;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .links a {
+    padding: 6px 10px;
+    font-size: var(--fs-sm);
+    white-space: nowrap;
+  }
+}

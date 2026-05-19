@@ -33,3 +33,31 @@
   padding: 32px;
   max-width: 760px;
 }
+
+@media (max-width: 768px) {
+  .page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: calc(100vh - 56px);
+    overflow: visible;
+  }
+  .sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sideTab {
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: var(--fs-sm);
+  }
+  .content {
+    padding: 16px;
+    max-width: 100%;
+    overflow: visible;
+  }
+}

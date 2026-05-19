@@ -77,4 +77,14 @@ async def publish_post(post: Post, db: Session) -> List[Dict]:
         from services.reminder_service import send_publish_failure_alert
         await send_publish_failure_alert(post.id, post.title)
 
+    # автоматическое напоминание для полуденных постов (12:00)
+    if (
+        post.scheduled_at
+        and post.scheduled_at.hour == 12
+        and post.scheduled_at.minute == 0
+        and any(s == PostTargetStatus.published for s in statuses)
+    ):
+        from services.reminder_service import send_noon_post_links
+        await send_noon_post_links(post.id, post.title)
+
     return results

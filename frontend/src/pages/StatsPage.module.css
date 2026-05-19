@@ -152,3 +152,32 @@
   color: #fff;
   cursor: default;
 }
+
+@media (max-width: 768px) {
+  .page { padding: 12px; gap: 16px; }
+  .header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .pageTitle { font-size: var(--fs-lg); }
+  .metricsRow { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .metric { padding: 14px 16px; }
+  .metricValue { font-size: 22px; }
+  .section { padding: 16px; }
+  .sectionTitle { font-size: var(--fs-base); }
+  .channelGrid { grid-template-columns: 1fr; }
+  /* топ постов: убираем редкие колонки и переводим в карточный вид */
+  .postsHeader { display: none; }
+  .postRow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .numCol { text-align: left; }
+  .numCol::before {
+    content: attr(data-label) ': ';
+    color: var(--text2);
+    font-weight: 400;
+    margin-right: 4px;
+  }
+}
