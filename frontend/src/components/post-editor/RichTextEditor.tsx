@@ -76,8 +76,13 @@ export default function RichTextEditor() {
     const el = textareaRef.current
     if (!el) return
     const pos = el.selectionStart
-    const newText = textTg.slice(0, pos) + emoji + textTg.slice(el.selectionEnd)
+    const end = el.selectionEnd
+    const newText = textTg.slice(0, pos) + emoji + textTg.slice(end)
+    // сдвигаем ranges: вставка эмодзи длиной emoji.length в позиции pos
+    const delta = emoji.length - (end - pos)
+    const shifted = shiftRanges(textTgRanges, pos, delta, newText.length)
     setTextTg(newText)
+    if (shifted !== textTgRanges) setTextTgRanges(shifted)
     setShowEmoji(false)
     setTimeout(() => {
       el.focus()
