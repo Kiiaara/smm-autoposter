@@ -14,12 +14,13 @@ def escape_md2(text: str) -> str:
 
 
 def ranges_to_md2(text: str, ranges: List[Dict]) -> str:
-    """Convert raw text + format ranges to MarkdownV2 string."""
+    """Convert raw text + (возможно пересекающиеся) format ranges to MarkdownV2.
+    Используем HTML parse_mode для TG - он спокойно переносит вложенные теги.
+    Но т.к. остальной код жёстко завязан на MarkdownV2, делаем токенизацию
+    по позициям границ - в каждой точке открываем/закрываем нужные маркеры.
+    """
     if not ranges:
         return escape_md2(text)
-
-    # sort ranges by start
-    sorted_ranges = sorted(ranges, key=lambda r: r["start"])
 
     MD2_MARKERS = {
         "bold": ("*", "*"),
@@ -30,27 +31,83 @@ def ranges_to_md2(text: str, ranges: List[Dict]) -> str:
         "spoiler": ("||", "||"),
     }
 
-    result = []
-    pos = 0
-    for r in sorted_ranges:
-        start, end, rtype = r["start"], r["end"], r["type"]
-        if pos < start:
-            result.append(escape_md2(text[pos:start]))
-        chunk = text[start:end]
+    # Стратегия: для каждой позиции в тексте знаем какие форматы активны.
+    # Идём по символам, открываем/закрываем маркеры на границах.
+    # Для link используем особый маркер - его нельзя вкладывать в другие, поэтому
+    # его открываем/закрываем последним (внутри) и пишем как [text](url).
+
+    n = len(text)
+    # Для каждой позиции - какие НЕ-link форматы активны
+    active_at: List[set] = [set() for _ in range(n + 1)]
+    # Для каждой позиции - какой link активен (один URL за раз)
+    link_at: List[Optional[str]] = [None] * (n + 1)
+
+    for r in ranges:
+        s, e = max(0, r["start"]), min(n, r["end"])
+        if e <= s:
+            continue
+        rtype = r["type"]
         if rtype == "link":
-            url = r.get("url", "")
-            result.append(f"[{escape_md2(chunk)}]({url})")
+            for i in range(s, e):
+                link_at[i] = r.get("url", "")
         elif rtype in MD2_MARKERS:
-            open_m, close_m = MD2_MARKERS[rtype]
-            result.append(f"{open_m}{escape_md2(chunk)}{close_m}")
-        else:
-            result.append(escape_md2(chunk))
-        pos = end
+            for i in range(s, e):
+                active_at[i].add(rtype)
 
-    if pos < len(text):
-        result.append(escape_md2(text[pos:]))
+    # Порядок открытия - стабильный, чтобы парные закрытия совпадали
+    ORDER = ["bold", "italic", "underline", "strike", "spoiler", "code"]
 
-    return "".join(result)
+    out: List[str] = []
+    prev_active: set = set()
+    prev_link: Optional[str] = None
+    link_buffer: List[str] = []  # текст внутри текущей ссылки
+
+    def flush_link():
+        nonlocal prev_link
+        if prev_link is not None:
+            out.append("[")
+            out.extend(link_buffer)
+            out.append(f"]({prev_link})")
+            link_buffer.clear()
+            prev_link = None
+
+    for i in range(n + 1):
+        cur_active = active_at[i] if i < n else set()
+        cur_link = link_at[i] if i < n else None
+
+        # 1. Если меняется набор форматов - закрываем старые в обратном порядке,
+        #    открываем новые в прямом
+        if cur_active != prev_active:
+            # сначала закроем link, потом форматы, потом откроем форматы и link
+            flush_link()
+            to_close = [t for t in reversed(ORDER) if t in prev_active and t not in cur_active]
+            to_open = [t for t in ORDER if t in cur_active and t not in prev_active]
+            for t in to_close:
+                out.append(MD2_MARKERS[t][1])
+            for t in to_open:
+                out.append(MD2_MARKERS[t][0])
+            prev_active = cur_active
+
+        # 2. Link меняется - закрываем старую, открываем новую (буфер начнётся пустым)
+        if cur_link != prev_link:
+            flush_link()
+            prev_link = cur_link
+
+        # 3. Записываем символ если есть
+        if i < n:
+            ch = escape_md2(text[i])
+            if prev_link is not None:
+                link_buffer.append(ch)
+            else:
+                out.append(ch)
+
+    # финальное закрытие
+    flush_link()
+    for t in reversed(ORDER):
+        if t in prev_active:
+            out.append(MD2_MARKERS[t][1])
+
+    return "".join(out)
 
 
 async def _tg_request(bot_token: str, method: str, data: Dict) -> Dict:
