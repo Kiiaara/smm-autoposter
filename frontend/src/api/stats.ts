@@ -10,12 +10,25 @@ export interface ChannelSummary {
   posts_count: number
 }
 
+export interface ServicePostsSummary {
+  channel_id: number
+  name: string
+  platform: string
+  posts_count: number
+  avg_views: number
+  avg_likes: number
+  avg_comments: number
+  total_views: number
+  total_likes: number
+}
+
 export interface Overview {
   total_posts: number
   total_views: number
   total_likes: number
   total_comments: number
   channels: ChannelSummary[]
+  service_posts: ServicePostsSummary[]
 }
 
 export interface TopPost {

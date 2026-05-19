@@ -81,8 +81,11 @@ export default function PlainTextEditor() {
             <EmojiPickerReact
               onEmojiClick={e => insertEmoji(e.emoji)}
               theme={"dark" as any}
-              height={350}
-              width="100%"
+              height={480}
+              width={420}
+              emojiSize={32}
+              searchPlaceHolder="Поиск эмодзи..."
+              previewConfig={{ showPreview: false }}
             />
           </div>
         )}

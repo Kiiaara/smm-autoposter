@@ -27,13 +27,27 @@ class TopPostItem(BaseModel):
 
 
 class ChannelSummary(BaseModel):
+    """Полный срез по каналу (не зависит от того что мы публиковали)."""
     channel_id: int
     name: str
     platform: str
     subscribers: int
+    posts_count: int  # всего постов в канале (по выборке из VK API)
     avg_views: int
     avg_likes: int
+
+
+class ServicePostsSummary(BaseModel):
+    """Срез только по постам опубликованным через наш сервис за период."""
+    channel_id: int
+    name: str
+    platform: str
     posts_count: int
+    avg_views: int
+    avg_likes: int
+    avg_comments: int
+    total_views: int
+    total_likes: int
 
 
 class SubscriberPoint(BaseModel):
@@ -61,6 +75,7 @@ class OverviewResponse(BaseModel):
     total_likes: int
     total_comments: int
     channels: List[ChannelSummary]
+    service_posts: List[ServicePostsSummary] = []
 
 
 def _latest_stats_subquery(db: Session):
@@ -82,29 +97,37 @@ def _latest_stats_subquery(db: Session):
 def overview(period_days: int = 30, db: Session = Depends(get_db)):
     since = datetime.now() - timedelta(days=period_days)
 
-    # тоталы по нашим постам (за период)
+    # наши посты за период
     targets = db.query(PostTarget).filter(
         PostTarget.status == PostTargetStatus.published,
         PostTarget.published_at >= since,
     ).all()
     latest = _latest_stats_subquery(db)
+
+    # тоталы + агрегация по каналу для service_posts
     total_views = total_likes = total_comments = 0
-    posts_per_channel: Dict[int, int] = {}
+    service_agg: Dict[int, dict] = {}
     for t in targets:
         s = latest.get(t.id)
         if t.channel:
-            posts_per_channel[t.channel_id] = posts_per_channel.get(t.channel_id, 0) + 1
+            agg = service_agg.setdefault(t.channel_id, {
+                "channel": t.channel, "views": 0, "likes": 0, "comments": 0, "count": 0,
+            })
+            agg["count"] += 1
         if not s:
             continue
         total_views += s.views
         total_likes += s.likes
         total_comments += s.comments
+        if t.channel:
+            agg["views"] += s.views
+            agg["likes"] += s.likes
+            agg["comments"] += s.comments
 
-    # карточки каналов - все активные VK (TG пока без агрегатов, добавим с Telethon)
+    # Сравнение каналов - все активные VK (TG будет с Telethon)
     channels = db.query(Channel).filter(Channel.is_active == True).all()
     channel_summaries: List[ChannelSummary] = []
     for ch in channels:
-        # пока показываем только VK (для TG нужен Telethon)
         if ch.platform != Platform.vk:
             continue
         snap = db.query(ChannelSnapshot).filter(
@@ -115,9 +138,26 @@ def overview(period_days: int = 30, db: Session = Depends(get_db)):
             name=ch.name,
             platform=ch.platform.value,
             subscribers=snap.subscribers if snap else 0,
+            posts_count=snap.posts_total if snap else 0,
             avg_views=snap.avg_views if snap else 0,
             avg_likes=snap.avg_likes if snap else 0,
-            posts_count=posts_per_channel.get(ch.id, 0),
+        ))
+
+    # Срез по нашим постам
+    service_posts: List[ServicePostsSummary] = []
+    for ch_id, agg in service_agg.items():
+        ch = agg["channel"]
+        count = agg["count"] or 1
+        service_posts.append(ServicePostsSummary(
+            channel_id=ch_id,
+            name=ch.name,
+            platform=ch.platform.value,
+            posts_count=agg["count"],
+            avg_views=agg["views"] // count,
+            avg_likes=agg["likes"] // count,
+            avg_comments=agg["comments"] // count,
+            total_views=agg["views"],
+            total_likes=agg["likes"],
         ))
 
     return OverviewResponse(
@@ -126,6 +166,7 @@ def overview(period_days: int = 30, db: Session = Depends(get_db)):
         total_likes=total_likes,
         total_comments=total_comments,
         channels=channel_summaries,
+        service_posts=service_posts,
     )
 
 

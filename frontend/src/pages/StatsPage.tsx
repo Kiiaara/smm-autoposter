@@ -56,9 +56,36 @@ export default function StatsPage() {
                 </div>
                 <div className={styles.channelStats}>
                   <Stat label="Подписчиков" value={ch.subscribers} />
-                  <Stat label="Постов" value={ch.posts_count} />
+                  <Stat label="Постов в канале" value={ch.posts_count} />
                   <Stat label="Ср. просмотры" value={ch.avg_views} />
                   <Stat label="Ср. лайки" value={ch.avg_likes} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* По нашим постам */}
+      <Section title="По постам через сервис">
+        {!overview?.service_posts || overview.service_posts.length === 0 ? (
+          <p className={styles.empty}>За период не было опубликованных постов через сервис</p>
+        ) : (
+          <div className={styles.channelGrid}>
+            {overview.service_posts.map(sp => (
+              <div key={sp.channel_id} className={styles.channelCard}>
+                <div className={styles.channelHead}>
+                  <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[sp.platform] }}>
+                    {PLATFORM_LABELS[sp.platform]}
+                  </span>
+                  <span className={styles.channelName}>{sp.name}</span>
+                </div>
+                <div className={styles.channelStats}>
+                  <Stat label="Постов" value={sp.posts_count} />
+                  <Stat label="Всего просмотров" value={sp.total_views} />
+                  <Stat label="Ср. просмотры" value={sp.avg_views} />
+                  <Stat label="Ср. лайки" value={sp.avg_likes} />
+                  <Stat label="Ср. комментарии" value={sp.avg_comments} />
                 </div>
               </div>
             ))}
