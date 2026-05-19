@@ -69,3 +69,7 @@
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
+.emojiWrapper :global(.EmojiPickerReact) {
+  --epr-emoji-size: 32px !important;
+  --epr-category-navigation-button-size: 34px !important;
+}

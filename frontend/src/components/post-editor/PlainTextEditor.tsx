@@ -83,7 +83,6 @@ export default function PlainTextEditor() {
               theme={"dark" as any}
               height={480}
               width={420}
-              emojiSize={32}
               searchPlaceHolder="Поиск эмодзи..."
               previewConfig={{ showPreview: false }}
             />
