@@ -8,55 +8,72 @@
   position: relative;
 }
 
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  flex-wrap: wrap;
+}
+
+.toolBtn {
+  padding: 6px 11px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 16px;
+  min-width: 36px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.toolBtn:hover { background: var(--bg3); color: var(--text); }
+
 .editorArea {
   position: relative;
 }
 
-.highlight {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0;
-  padding: 12px 14px;
-  font-family: inherit;
-  font-size: 16px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  word-wrap: break-word;
-  color: transparent;
-  pointer-events: none;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.highlight strong, .highlight em, .highlight u, .highlight s, .highlight code, .highlight .spoiler {
-  color: transparent;
-  background: transparent;
-}
-.highlight a { color: transparent; background: rgba(41,182,246,0.3); border-radius: 2px; border-bottom: 2px solid rgba(41,182,246,1); }
-
-.textarea {
-  position: relative;
-  z-index: 1;
-  width: 100%;
+.editor {
   min-height: 180px;
   padding: 12px 14px;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-family: inherit;
   font-size: 16px;
   line-height: 1.6;
-  resize: vertical;
-  white-space: pre-wrap;
-  word-break: break-word;
+  color: var(--text);
+  outline: none;
+  border-radius: 0 0 8px 8px;
   word-wrap: break-word;
-  box-sizing: border-box;
-  margin: 0;
+  white-space: pre-wrap;
+}
+
+.editor:empty:before {
+  content: attr(data-placeholder);
+  color: var(--text2);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.editor b, .editor strong { font-weight: 700; }
+.editor i, .editor em { font-style: italic; }
+.editor u { text-decoration: underline; }
+.editor s, .editor strike { text-decoration: line-through; }
+.editor code {
+  font-family: monospace;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.editor a {
+  color: #29b6f6;
+  text-decoration: underline;
+}
+.editor tg-spoiler {
+  background: rgba(255,255,255,0.15);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
 }
 
 .emojiWrapper {

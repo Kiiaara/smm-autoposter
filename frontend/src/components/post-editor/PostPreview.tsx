@@ -22,7 +22,7 @@ const TABS: { id: Platform; label: string }[] = [
 ]
 
 export default function PostPreview() {
-  const { selectedNetworks, selectedChannels, title, textTg, textTgRanges, textPlain, mediaPaths, pollDraft } = useEditorStore()
+  const { selectedNetworks, selectedChannels, title, textTgHtml, textPlain, mediaPaths, pollDraft } = useEditorStore()
   const available = TABS.filter(t => selectedNetworks.includes(t.id))
   const [tab, setTab] = useState<Platform>('tg')
 
@@ -52,7 +52,7 @@ export default function PostPreview() {
         ))}
       </div>
       <div className={styles.preview}>
-        {current.id === 'tg' && <TgPreview title={title} text={textTg} ranges={textTgRanges} media={mediaPaths} poll={pollDraft} time={now} channelName={channelName} />}
+        {current.id === 'tg' && <TgPreview title={title} html={textTgHtml} media={mediaPaths} poll={pollDraft} time={now} channelName={channelName} />}
         {current.id === 'vk' && <VkPreview title={title} text={textPlain} media={mediaPaths} poll={pollDraft} date={dateStr} channelName={channelName} />}
         {current.id === 'ig' && <IgPreview title={title} text={textPlain} media={mediaPaths} channelName={channelName} />}
         {current.id === 'max' && <MaxPreview title={title} text={textPlain} media={mediaPaths} date={dateStr} channelName={channelName} />}
@@ -62,12 +62,11 @@ export default function PostPreview() {
 }
 
 // ── Telegram ──────────────────────────────────────
-function TgPreview({ title, text, ranges, media, poll, time, channelName }: any) {
-  const html = toHtml(text, ranges, styles)
+function TgPreview({ title, html, media, poll, time, channelName }: any) {
   const initial = (channelName || 'К')[0].toUpperCase()
   const hasMedia = media?.length > 0
-  // текст показываем если он есть и (нет опроса ИЛИ флаг tg_no_text выключен)
-  const hasText = (text || title) && (!poll || !poll.tg_no_text)
+  const hasContent = !!(html && html.replace(/<[^>]+>/g, '').trim())
+  const hasText = (hasContent || title) && (!poll || !poll.tg_no_text)
   const showTextBubble = hasMedia || hasText
   const showEmptyHint = !hasMedia && !hasText && !poll
 

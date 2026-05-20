@@ -26,10 +26,11 @@ async def publish_post(post: Post, db: Session) -> List[Dict]:
             result = await publish_to_telegram(
                 bot_token=cfg.get("bot_token", ""),
                 chat_id=cfg.get("chat_id", ""),
-                text_raw=post.text_tg,
-                text_ranges=post.text_tg_ranges or [],
+                text_html=post.text_tg_html,
                 media_paths=post.media_paths or [],
                 poll_json=post.poll_json,
+                legacy_text_raw=post.text_tg,
+                legacy_text_ranges=post.text_tg_ranges or [],
             )
         elif platform == Platform.vk:
             result = await publish_to_vk(

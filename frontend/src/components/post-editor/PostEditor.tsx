@@ -56,13 +56,11 @@ export default function PostEditor({ editPostId }: Props) {
     mutationFn: async (status: PostStatus) => {
       const data: PostCreate = {
         title: store.title || undefined,
-        text_tg: store.textTg || undefined,
-        text_tg_ranges: store.textTgRanges,
+        text_tg_html: store.textTgHtml || undefined,
         text_plain: store.textPlain || undefined,
         media_paths: store.mediaPaths,
         poll_json: store.pollDraft ?? undefined,
         status,
-        // send as naive local datetime - backend treats it as-is, no TZ conversion
         scheduled_at: store.scheduledAt ? `${store.scheduledAt}:00` : undefined,
         targets: store.selectedChannels.map(id => ({ channel_id: id })),
       }
@@ -107,8 +105,7 @@ export default function PostEditor({ editPostId }: Props) {
         const pad = (n: number) => String(n).padStart(2, '0')
         const localNow = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
         const data: PostCreate = {
-          text_tg: store.textTg || undefined,
-          text_tg_ranges: store.textTgRanges,
+          text_tg_html: store.textTgHtml || undefined,
           text_plain: store.textPlain || undefined,
           media_paths: store.mediaPaths,
           poll_json: store.pollDraft ?? undefined,

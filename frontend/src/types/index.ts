@@ -28,6 +28,7 @@ export interface PostTarget {
 export interface Post {
   id: number
   title?: string
+  text_tg_html?: string
   text_tg?: string
   text_tg_ranges: FormatRange[]
   text_plain?: string
@@ -52,8 +53,9 @@ export interface PostListItem {
 
 export interface PostCreate {
   title?: string
-  text_tg?: string
-  text_tg_ranges?: FormatRange[]
+  text_tg_html?: string
+  text_tg?: string  // legacy
+  text_tg_ranges?: FormatRange[]  // legacy
   text_plain?: string
   media_paths?: string[]
   poll_json?: PollData

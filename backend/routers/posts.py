@@ -12,7 +12,11 @@ router = APIRouter(prefix="/api/posts", tags=["posts"])
 
 def _build_list_item(post: Post) -> PostListItem:
     platforms = list({t.channel.platform.value for t in post.targets if t.channel})
-    preview = (post.text_tg or post.text_plain or "")[:120]
+    if post.text_tg_html:
+        from publishers.html_sanitize import html_to_plain
+        preview = html_to_plain(post.text_tg_html)[:120]
+    else:
+        preview = (post.text_tg or post.text_plain or "")[:120]
     return PostListItem(
         id=post.id,
         title=post.title,
@@ -49,6 +53,7 @@ def list_posts(
 def create_post(data: PostCreate, db: Session = Depends(get_db)):
     post = Post(
         title=data.title,
+        text_tg_html=data.text_tg_html,
         text_tg=data.text_tg,
         text_tg_ranges=[r.model_dump() for r in data.text_tg_ranges],
         text_plain=data.text_plain,

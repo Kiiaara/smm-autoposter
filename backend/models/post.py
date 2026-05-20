@@ -23,9 +23,10 @@ class Post(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=True)
-    # raw text for Telegram (format ranges stored separately in text_tg_ranges)
+    # для TG: HTML с форматированием (новый формат, parse_mode=HTML)
+    text_tg_html = Column(Text, nullable=True)
+    # legacy: plain text + ranges (для старых постов, постепенно мигрируем)
     text_tg = Column(Text, nullable=True)
-    # format ranges: [{"start": 0, "end": 5, "type": "bold"}, ...]
     text_tg_ranges = Column(JSON, default=list)
     # plain text for VK / Instagram / Max
     text_plain = Column(Text, nullable=True)

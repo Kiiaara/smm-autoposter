@@ -110,6 +110,75 @@ def ranges_to_md2(text: str, ranges: List[Dict]) -> str:
     return "".join(out)
 
 
+def _ranges_to_html(text: str, ranges: List[Dict]) -> str:
+    """Legacy конвертер: старый формат plain + ranges → HTML для TG."""
+    from html import escape as h_escape
+    if not ranges:
+        return h_escape(text).replace("\n", "<br>")
+
+    n = len(text)
+    active_at: List[set] = [set() for _ in range(n + 1)]
+    link_at: List[Optional[str]] = [None] * (n + 1)
+    TAG_MAP = {
+        "bold": "b", "italic": "i", "underline": "u",
+        "strike": "s", "code": "code", "spoiler": "tg-spoiler",
+    }
+    for r in ranges:
+        s, e = max(0, r["start"]), min(n, r["end"])
+        if e <= s:
+            continue
+        rtype = r["type"]
+        if rtype == "link":
+            for i in range(s, e):
+                link_at[i] = r.get("url", "")
+        elif rtype in TAG_MAP:
+            for i in range(s, e):
+                active_at[i].add(rtype)
+
+    ORDER = ["bold", "italic", "underline", "strike", "spoiler", "code"]
+    out: List[str] = []
+    prev_active: set = set()
+    prev_link: Optional[str] = None
+    link_buf: List[str] = []
+
+    def flush_link():
+        nonlocal prev_link
+        if prev_link is not None:
+            url = h_escape(prev_link, quote=True)
+            out.append(f'<a href="{url}">')
+            out.extend(link_buf)
+            out.append('</a>')
+            link_buf.clear()
+            prev_link = None
+
+    for i in range(n + 1):
+        cur_active = active_at[i] if i < n else set()
+        cur_link = link_at[i] if i < n else None
+        if cur_active != prev_active:
+            flush_link()
+            for t in reversed(ORDER):
+                if t in prev_active and t not in cur_active:
+                    out.append(f"</{TAG_MAP[t]}>")
+            for t in ORDER:
+                if t in cur_active and t not in prev_active:
+                    out.append(f"<{TAG_MAP[t]}>")
+            prev_active = cur_active
+        if cur_link != prev_link:
+            flush_link()
+            prev_link = cur_link
+        if i < n:
+            ch = h_escape(text[i])
+            if prev_link is not None:
+                link_buf.append(ch)
+            else:
+                out.append(ch)
+    flush_link()
+    for t in reversed(ORDER):
+        if t in prev_active:
+            out.append(f"</{TAG_MAP[t]}>")
+    return "".join(out).replace("\n", "<br>")
+
+
 async def _tg_request(bot_token: str, method: str, data: Dict) -> Dict:
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
     async with httpx.AsyncClient(timeout=30) as client:
@@ -120,41 +189,53 @@ async def _tg_request(bot_token: str, method: str, data: Dict) -> Dict:
 async def publish_to_telegram(
     bot_token: str,
     chat_id: str,
-    text_raw: Optional[str],
-    text_ranges: List[Dict],
+    text_html: Optional[str],
     media_paths: List[str],
     poll_json: Optional[Dict],
+    # legacy параметры для обратной совместимости со старыми постами
+    legacy_text_raw: Optional[str] = None,
+    legacy_text_ranges: Optional[List[Dict]] = None,
 ) -> PublishResult:
     try:
-        # build MarkdownV2 text
-        md2_text = ranges_to_md2(text_raw, text_ranges) if text_raw else None
+        from publishers.html_sanitize import sanitize_for_tg
+
+        # Приоритет: HTML (новый формат). Если его нет - конвертируем старые ranges→HTML
+        if text_html:
+            send_text_html = sanitize_for_tg(text_html)
+        elif legacy_text_raw and legacy_text_ranges:
+            send_text_html = sanitize_for_tg(_ranges_to_html(legacy_text_raw, legacy_text_ranges))
+        elif legacy_text_raw:
+            send_text_html = sanitize_for_tg(legacy_text_raw)
+        else:
+            send_text_html = None
 
         tg_no_text = poll_json.get("tg_no_text", True) if poll_json else False
-        send_text = bool(md2_text) and not tg_no_text
+        send_text = bool(send_text_html) and not tg_no_text
 
-        message_id = None  # track id of the main post message
+        message_id = None
 
         if media_paths and not poll_json:
             base = settings.base_url.rstrip("/")
             if len(media_paths) == 1:
-                r = await _tg_request(bot_token, "sendPhoto", {
+                payload = {
                     "chat_id": chat_id,
                     "photo": f"{base}/{media_paths[0]}",
-                    "caption": md2_text or "",
-                    "parse_mode": "MarkdownV2",
-                })
+                }
+                if send_text_html:
+                    payload["caption"] = send_text_html
+                    payload["parse_mode"] = "HTML"
+                r = await _tg_request(bot_token, "sendPhoto", payload)
             else:
                 media = [{"type": "photo", "media": f"{base}/{p}"} for p in media_paths]
-                if md2_text:
-                    media[0]["caption"] = md2_text
-                    media[0]["parse_mode"] = "MarkdownV2"
+                if send_text_html:
+                    media[0]["caption"] = send_text_html
+                    media[0]["parse_mode"] = "HTML"
                 r = await _tg_request(bot_token, "sendMediaGroup", {
                     "chat_id": chat_id,
                     "media": media,
                 })
             if not r.get("ok"):
                 return PublishResult(ok=False, error=r.get("description", "TG error"))
-            # sendPhoto -> result is dict, sendMediaGroup -> result is list
             result = r.get("result")
             if isinstance(result, list) and result:
                 message_id = str(result[0].get("message_id"))
@@ -163,8 +244,8 @@ async def publish_to_telegram(
         elif send_text:
             r = await _tg_request(bot_token, "sendMessage", {
                 "chat_id": chat_id,
-                "text": md2_text,
-                "parse_mode": "MarkdownV2",
+                "text": send_text_html,
+                "parse_mode": "HTML",
             })
             if not r.get("ok"):
                 return PublishResult(ok=False, error=r.get("description", "TG error"))

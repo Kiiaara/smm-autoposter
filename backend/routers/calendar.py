@@ -10,6 +10,14 @@ from models.schedule_slot import ScheduleSlot
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 
+def _post_preview(p) -> str:
+    """Берёт превью текста поста - предпочитая HTML, потом legacy text_tg, потом plain."""
+    if p.text_tg_html:
+        from publishers.html_sanitize import html_to_plain
+        return html_to_plain(p.text_tg_html)
+    return p.text_tg or p.text_plain or ""
+
+
 class TargetStatus(BaseModel):
     channel_name: str
     platform: str
@@ -99,7 +107,7 @@ def get_calendar(week_start: str, db: Session = Depends(get_db)):
                 status=p.status.value,
                 scheduled_at=p.scheduled_at,
                 platforms=platforms,
-                preview_text=(p.text_tg or p.text_plain or "")[:100],
+                preview_text=_post_preview(p)[:100],
                 has_poll=p.poll_json is not None,
                 targets=target_statuses,
             ))

@@ -4,12 +4,23 @@ import { useEditorStore } from '../../store/editorStore'
 import styles from './PlainTextEditor.module.css'
 
 export default function PlainTextEditor() {
-  const { textTg, textPlain, setTextPlain } = useEditorStore()
+  const { textTgHtml, textPlain, setTextPlain } = useEditorStore()
   const [showEmoji, setShowEmoji] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function copyFromTg() {
-    setTextPlain(textTg)
+    // конвертируем HTML в plain text: <br>/<p>/<div> → \n, ссылки → "текст (url)", остальные теги убираем
+    let s = textTgHtml || ''
+    s = s.replace(/<br\s*\/?>/gi, '\n')
+    s = s.replace(/<\/(p|div)>/gi, '\n')
+    s = s.replace(/<(p|div)[^>]*>/gi, '')
+    s = s.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, (_, href, text) => {
+      const t = text.replace(/<[^>]+>/g, '')
+      return href && href !== t ? `${t} (${href})` : t
+    })
+    s = s.replace(/<[^>]+>/g, '')
+    s = s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    setTextPlain(s.trim())
   }
 
   function attachVkArticle() {
@@ -60,7 +71,7 @@ export default function PlainTextEditor() {
         >
           + Статья VK
         </button>
-        {textTg && (
+        {textTgHtml && (
           <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={copyFromTg}>
             Скопировать из TG
           </button>

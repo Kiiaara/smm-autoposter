@@ -22,6 +22,8 @@ async def lifespan(app: FastAPI):
     _migrate_reminders_send_at_nullable()
     # миграция: новые колонки в channel_snapshots
     _migrate_channel_snapshots_add_cols()
+    # миграция: добавить posts.text_tg_html
+    _migrate_posts_add_html_col()
     # перенос whitelist из .env в БД при первом запуске
     from routers.auth import _bootstrap_allowed_from_env
     _bootstrap_allowed_from_env()
@@ -90,6 +92,14 @@ app.include_router(reminders.router)
 app.include_router(app_settings.router)
 app.include_router(stats.router)
 app.include_router(auth_router.router)
+
+
+def _migrate_posts_add_html_col():
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        existing = conn.execute(text("PRAGMA table_info(posts)")).fetchall()
+        if "text_tg_html" not in {row[1] for row in existing}:
+            conn.execute(text("ALTER TABLE posts ADD COLUMN text_tg_html TEXT"))
 
 
 def _migrate_channel_snapshots_add_cols():

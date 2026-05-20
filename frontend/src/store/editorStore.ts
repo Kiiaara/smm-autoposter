@@ -8,8 +8,9 @@ interface ReminderDraft {
 
 interface EditorState {
   title: string
-  textTg: string
-  textTgRanges: FormatRange[]
+  textTgHtml: string  // новый формат - HTML строка
+  textTg: string  // legacy
+  textTgRanges: FormatRange[]  // legacy
   textPlain: string
   mediaPaths: string[]
   selectedNetworks: Platform[]
@@ -19,6 +20,7 @@ interface EditorState {
   reminders: ReminderDraft[]
 
   setTitle: (v: string) => void
+  setTextTgHtml: (v: string) => void
   setTextTg: (v: string) => void
   setTextTgRanges: (v: FormatRange[]) => void
   setTextPlain: (v: string) => void
@@ -34,6 +36,7 @@ interface EditorState {
 
 const defaults = {
   title: '',
+  textTgHtml: '',
   textTg: '',
   textTgRanges: [] as FormatRange[],
   textPlain: '',
@@ -48,6 +51,7 @@ const defaults = {
 export const useEditorStore = create<EditorState>(set => ({
   ...defaults,
   setTitle: (v) => set({ title: v }),
+  setTextTgHtml: (v) => set({ textTgHtml: v }),
   setTextTg: (v) => set({ textTg: v }),
   setTextTgRanges: (v) => set({ textTgRanges: v }),
   setTextPlain: (v) => set({ textPlain: v }),

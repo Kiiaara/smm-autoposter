@@ -35,8 +35,9 @@ class PostTargetRead(BaseModel):
 
 class PostCreate(BaseModel):
     title: Optional[str] = None
-    text_tg: Optional[str] = None
-    text_tg_ranges: List[FormatRange] = []
+    text_tg_html: Optional[str] = None  # новый формат - HTML
+    text_tg: Optional[str] = None  # legacy
+    text_tg_ranges: List[FormatRange] = []  # legacy
     text_plain: Optional[str] = None
     media_paths: List[str] = []
     poll_json: Optional[PollData] = None
@@ -47,6 +48,7 @@ class PostCreate(BaseModel):
 
 class PostUpdate(BaseModel):
     title: Optional[str] = None
+    text_tg_html: Optional[str] = None
     text_tg: Optional[str] = None
     text_tg_ranges: Optional[List[FormatRange]] = None
     text_plain: Optional[str] = None
@@ -60,6 +62,7 @@ class PostUpdate(BaseModel):
 class PostRead(BaseModel):
     id: int
     title: Optional[str]
+    text_tg_html: Optional[str] = None
     text_tg: Optional[str]
     text_tg_ranges: List[Any]
     text_plain: Optional[str]
