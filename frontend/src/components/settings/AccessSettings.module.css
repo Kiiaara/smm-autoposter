@@ -13,6 +13,31 @@
 }
 .hint a { color: var(--accent); text-decoration: underline; }
 
+.modeTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg3);
+  border-radius: 8px;
+  width: fit-content;
+}
+.modeTab {
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.modeTab:hover { color: var(--text); }
+.modeTabActive {
+  background: var(--bg);
+  color: var(--text);
+}
+
 .addForm {
   display: grid;
   grid-template-columns: 1fr 1fr auto;

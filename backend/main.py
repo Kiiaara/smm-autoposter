@@ -24,6 +24,8 @@ async def lifespan(app: FastAPI):
     _migrate_channel_snapshots_add_cols()
     # миграция: добавить posts.text_tg_html
     _migrate_posts_add_html_col()
+    # миграция: добавить allowed_users.email
+    _migrate_allowed_users_add_email()
     # перенос whitelist из .env в БД при первом запуске
     from routers.auth import _bootstrap_allowed_from_env
     _bootstrap_allowed_from_env()
@@ -51,6 +53,7 @@ PUBLIC_PATHS = {
     "/api/health",
     "/api/auth/telegram", "/api/auth/me", "/api/auth/logout", "/api/auth/config",
     "/api/auth/bot/start", "/api/auth/bot/check",
+    "/api/auth/email/request", "/api/auth/email/verify",
 }
 PUBLIC_PREFIXES = ("/api/auth/bot/webhook/",)
 
@@ -66,8 +69,8 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if any(path.startswith(p) for p in PUBLIC_PREFIXES):
         return await call_next(request)
-    # если auth-бот не настроен (локалка) - пропускаем
-    if not settings.auth_bot_token:
+    # если ни один способ авторизации не настроен (локалка) - пропускаем
+    if not settings.auth_bot_token and not settings.smtp_user:
         return await call_next(request)
 
     token = request.cookies.get(SESSION_COOKIE)
@@ -107,6 +110,15 @@ def _migrate_posts_add_html_col():
         existing = conn.execute(text("PRAGMA table_info(posts)")).fetchall()
         if "text_tg_html" not in {row[1] for row in existing}:
             conn.execute(text("ALTER TABLE posts ADD COLUMN text_tg_html TEXT"))
+
+
+def _migrate_allowed_users_add_email():
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        existing = conn.execute(text("PRAGMA table_info(allowed_users)")).fetchall()
+        if "email" not in {row[1] for row in existing}:
+            conn.execute(text("ALTER TABLE allowed_users ADD COLUMN email TEXT"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_allowed_users_email ON allowed_users(email)"))
 
 
 def _migrate_channel_snapshots_add_cols():

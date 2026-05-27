@@ -4,73 +4,59 @@ import toast from 'react-hot-toast'
 import client from '../api/client'
 import styles from './LoginPage.module.css'
 
-type Phase = 'checking' | 'idle' | 'waiting' | 'expired'
+type Phase = 'checking' | 'email' | 'code'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const [phase, setPhase] = useState<Phase>('checking')
-  const [deeplink, setDeeplink] = useState<string>('')
-  const tokenRef = useRef<string>('')
-  const pollRef = useRef<number | null>(null)
-  const expiryRef = useRef<number>(0)
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const codeInputRef = useRef<HTMLInputElement>(null)
 
   // если уже залогинен - на главную
   useEffect(() => {
     client.get('/auth/me')
       .then(() => navigate('/', { replace: true }))
-      .catch(() => setPhase('idle'))
+      .catch(() => setPhase('email'))
   }, [navigate])
 
-  function stopPolling() {
-    if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }
-
-  useEffect(() => () => stopPolling(), [])
-
-  async function startLogin() {
-    try {
-      const { data } = await client.post('/auth/bot/start')
-      tokenRef.current = data.token
-      setDeeplink(data.deeplink)
-      expiryRef.current = Date.now() + data.expires_in * 1000
-      setPhase('waiting')
-      // открываем deeplink в новой вкладке
-      window.open(data.deeplink, '_blank', 'noopener')
-      // начинаем поллинг
-      pollRef.current = window.setInterval(checkLogin, 2000)
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Не удалось создать запрос на вход')
-    }
-  }
-
-  async function checkLogin() {
-    if (!tokenRef.current) return
-    if (Date.now() > expiryRef.current) {
-      stopPolling()
-      setPhase('expired')
+  async function requestCode(e: React.FormEvent) {
+    e.preventDefault()
+    const cleaned = email.trim().toLowerCase()
+    if (!cleaned.includes('@') || !cleaned.includes('.')) {
+      toast.error('Введите корректный email')
       return
     }
+    setSubmitting(true)
     try {
-      const { data } = await client.get('/auth/bot/check', { params: { token: tokenRef.current } })
-      if (data.approved) {
-        stopPolling()
-        toast.success(`Привет, ${data.first_name || 'друг'}!`)
-        navigate('/', { replace: true })
-      }
-    } catch (e: any) {
-      const status = e?.response?.status
-      if (status === 403) {
-        stopPolling()
-        toast.error(e.response.data?.detail ?? 'Доступ запрещён')
-        setPhase('idle')
-      } else if (status === 404 || status === 410) {
-        stopPolling()
-        setPhase('expired')
-      }
-      // прочие ошибки - просто продолжаем поллить
+      await client.post('/auth/email/request', { email: cleaned })
+      setEmail(cleaned)
+      setPhase('code')
+      toast.success('Код отправлен на почту')
+      setTimeout(() => codeInputRef.current?.focus(), 100)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Не удалось отправить код')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (code.length !== 6) {
+      toast.error('Код должен быть из 6 цифр')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await client.post('/auth/email/verify', { email, code })
+      toast.success('Вход выполнен')
+      navigate('/', { replace: true })
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Неверный код')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -82,44 +68,68 @@ export default function LoginPage() {
     <div className={styles.wrap}>
       <div className={styles.card}>
         <h1 className={styles.title}>Otlozhka ot Kiiara</h1>
-        <p className={styles.subtitle}>Вход через Telegram</p>
 
-        {phase === 'idle' && (
-          <>
-            <button type="button" className="btn btn-primary" onClick={startLogin} style={{ minWidth: 220 }}>
-              Войти через Telegram
+        {phase === 'email' && (
+          <form onSubmit={requestCode} className={styles.form}>
+            <p className={styles.subtitle}>Вход по почте</p>
+            <input
+              type="email"
+              className="input"
+              placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoFocus
+              required
+              autoComplete="email"
+            />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || !email}
+            >
+              {submitting ? 'Отправляем...' : 'Получить код'}
             </button>
             <p className={styles.hint}>
-              Откроется чат с ботом. Нажмите там "Старт" - и вернётесь сюда залогиненной.
+              Доступ только для разрешённых пользователей. Код придёт на почту, действителен 5 минут.
             </p>
-          </>
+          </form>
         )}
 
-        {phase === 'waiting' && (
-          <>
-            <div className={styles.waitBox}>
-              <div className={styles.spinner} />
-              <p style={{ margin: 0 }}>Ждём подтверждения в Telegram...</p>
-            </div>
-            <a href={deeplink} target="_blank" rel="noopener" className="btn btn-secondary">
-              Открыть бота ещё раз
-            </a>
-            <p className={styles.hint}>
-              В чате с ботом нажмите "Старт" (или /start). Окно закроется автоматически.
-            </p>
-          </>
-        )}
-
-        {phase === 'expired' && (
-          <>
-            <p style={{ color: 'var(--danger)', margin: 0 }}>Срок ссылки истёк (10 минут).</p>
-            <button type="button" className="btn btn-primary" onClick={startLogin} style={{ minWidth: 220 }}>
-              Попробовать снова
+        {phase === 'code' && (
+          <form onSubmit={verifyCode} className={styles.form}>
+            <p className={styles.subtitle}>Код отправлен на<br/><b>{email}</b></p>
+            <input
+              ref={codeInputRef}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              className={`input ${styles.codeInput}`}
+              placeholder="000000"
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              maxLength={6}
+              required
+              autoComplete="one-time-code"
+            />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || code.length !== 6}
+            >
+              {submitting ? 'Проверяем...' : 'Войти'}
             </button>
-          </>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => { setPhase('email'); setCode('') }}
+            >
+              Другой email
+            </button>
+            <p className={styles.hint}>
+              Не пришло? Проверьте папку "Спам". Код жив 5 минут.
+            </p>
+          </form>
         )}
-
-        <p className={styles.hint}>Доступ только для разрешённых пользователей.</p>
       </div>
     </div>
   )

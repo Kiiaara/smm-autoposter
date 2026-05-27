@@ -13,27 +13,40 @@ from database import get_db, SessionLocal
 from models.auth_session import AuthSession
 from models.allowed_user import AllowedUser
 from models.login_request import LoginRequest
+from models.email_code import EmailCode
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SESSION_COOKIE = "otlozhka_session"
 SESSION_TTL_DAYS = 30
 LOGIN_REQUEST_TTL_MINUTES = 10
+EMAIL_CODE_TTL_MINUTES = 5
+EMAIL_CODE_MAX_ATTEMPTS = 5
 
 
 def _bootstrap_allowed_from_env():
-    """При первом запуске переносим список из .env в БД (auth_allowed_tg_ids),
+    """При первом запуске переносим списки из .env (tg_ids и emails) в БД,
     чтобы юзер сразу мог зайти. Потом управление - через UI."""
-    raw = settings.auth_allowed_tg_ids or ""
-    ids = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
-    if not ids:
-        return
     db = SessionLocal()
     try:
+        # tg_ids
+        raw = settings.auth_allowed_tg_ids or ""
+        ids = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
         for tg_id in ids:
             existing = db.get(AllowedUser, tg_id)
             if not existing:
                 db.add(AllowedUser(tg_id=tg_id, label="initial admin"))
+        # emails - tg_id=0,-1,-2... как заглушка PK для email-only юзеров
+        raw_emails = settings.auth_allowed_emails or ""
+        emails = [e.strip().lower() for e in raw_emails.split(",") if e.strip()]
+        for email in emails:
+            existing = db.query(AllowedUser).filter(AllowedUser.email == email).first()
+            if existing:
+                continue
+            # подбираем свободный отрицательный tg_id (заглушка для email-only)
+            min_id = db.query(AllowedUser).filter(AllowedUser.tg_id < 0).order_by(AllowedUser.tg_id.asc()).first()
+            next_id = (min_id.tg_id - 1) if min_id else -1
+            db.add(AllowedUser(tg_id=next_id, label="initial admin", email=email))
         db.commit()
     finally:
         db.close()
@@ -147,13 +160,15 @@ def logout(response: Response, otlozhka_session: Optional[str] = Cookie(None), d
 # ── Управление списком разрешённых пользователей ──────────
 
 class AllowedUserCreate(BaseModel):
-    tg_id: int
+    tg_id: Optional[int] = None
+    email: Optional[str] = None
     label: Optional[str] = None
 
 
 class AllowedUserRead(BaseModel):
     tg_id: int
     label: Optional[str] = None
+    email: Optional[str] = None
     added_at: datetime
     is_self: bool = False
 
@@ -164,21 +179,46 @@ class AllowedUserRead(BaseModel):
 def list_allowed(user: AuthSession = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(AllowedUser).order_by(AllowedUser.added_at.asc()).all()
     return [
-        AllowedUserRead(tg_id=r.tg_id, label=r.label, added_at=r.added_at, is_self=(r.tg_id == user.tg_id))
+        AllowedUserRead(
+            tg_id=r.tg_id, label=r.label, email=r.email,
+            added_at=r.added_at, is_self=(r.tg_id == user.tg_id),
+        )
         for r in rows
     ]
 
 
 @router.post("/allowed", response_model=AllowedUserRead, status_code=201)
 def add_allowed(data: AllowedUserCreate, user: AuthSession = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.get(AllowedUser, data.tg_id)
-    if existing:
-        raise HTTPException(400, "Этот TG ID уже добавлен")
-    row = AllowedUser(tg_id=data.tg_id, label=data.label)
+    has_tg = data.tg_id is not None and data.tg_id > 0
+    email = _normalize_email(data.email) if data.email else None
+    if email and ("@" not in email or "." not in email):
+        raise HTTPException(400, "Некорректный email")
+    if not has_tg and not email:
+        raise HTTPException(400, "Укажите TG ID или email")
+
+    if has_tg:
+        existing = db.get(AllowedUser, data.tg_id)
+        if existing:
+            raise HTTPException(400, "Этот TG ID уже добавлен")
+    if email:
+        existing_email = db.query(AllowedUser).filter(AllowedUser.email == email).first()
+        if existing_email:
+            raise HTTPException(400, "Этот email уже добавлен")
+
+    if has_tg:
+        row = AllowedUser(tg_id=data.tg_id, label=data.label, email=email)
+    else:
+        # email-only: подбираем свободный отрицательный tg_id как заглушка PK
+        min_id = db.query(AllowedUser).filter(AllowedUser.tg_id < 0).order_by(AllowedUser.tg_id.asc()).first()
+        next_id = (min_id.tg_id - 1) if min_id else -1
+        row = AllowedUser(tg_id=next_id, label=data.label, email=email)
     db.add(row)
     db.commit()
     db.refresh(row)
-    return AllowedUserRead(tg_id=row.tg_id, label=row.label, added_at=row.added_at, is_self=False)
+    return AllowedUserRead(
+        tg_id=row.tg_id, label=row.label, email=row.email,
+        added_at=row.added_at, is_self=False,
+    )
 
 
 @router.delete("/allowed/{tg_id}")
@@ -322,3 +362,117 @@ async def _send_bot_message(chat_id: int, text: str):
             await c.post(url, json={"chat_id": chat_id, "text": text})
     except Exception:
         pass  # webhook не должен падать из-за проблем с отправкой
+
+
+# ── Login через email + код ───────────────────────────────
+# Юзер вводит email → шлём 6-значный код → юзер вводит код → ставим сессию
+
+class EmailRequestIn(BaseModel):
+    email: str
+
+
+class EmailVerifyIn(BaseModel):
+    email: str
+    code: str
+
+
+def _hash_code(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _find_allowed_by_email(db: Session, email: str) -> Optional[AllowedUser]:
+    return db.query(AllowedUser).filter(AllowedUser.email == email).first()
+
+
+@router.post("/email/request")
+def email_request(data: EmailRequestIn, db: Session = Depends(get_db)):
+    """Шлёт 6-значный код на email. Только если email в whitelist (или БД пустая - bootstrap)."""
+    email = _normalize_email(data.email)
+    if "@" not in email or "." not in email:
+        raise HTTPException(400, "Некорректный email")
+
+    has_users = db.query(AllowedUser).first() is not None
+    # bootstrap: первый юзер автоматом получает доступ
+    if not has_users:
+        # дадим войти, добавим в whitelist при verify
+        pass
+    else:
+        if not _find_allowed_by_email(db, email):
+            # не палим что email не в whitelist (антиспам) - но всё равно не шлём код
+            # возвращаем такой же ответ как и для разрешённого, чтобы не было перебора
+            return {"ok": True, "expires_in": EMAIL_CODE_TTL_MINUTES * 60}
+
+    # инвалидируем старые активные коды для этого email
+    db.query(EmailCode).filter(
+        EmailCode.email == email,
+        EmailCode.used == False,
+        EmailCode.expires_at > datetime.now(),
+    ).update({"used": True})
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    db.add(EmailCode(
+        email=email,
+        code_hash=_hash_code(code),
+        expires_at=datetime.now() + timedelta(minutes=EMAIL_CODE_TTL_MINUTES),
+    ))
+    db.commit()
+
+    try:
+        from services.email_sender import send_login_code
+        send_login_code(email, code)
+    except Exception as e:
+        # код в БД остался, но письмо не ушло - сообщим юзеру
+        raise HTTPException(500, f"Не удалось отправить письмо: {e}")
+
+    return {"ok": True, "expires_in": EMAIL_CODE_TTL_MINUTES * 60}
+
+
+@router.post("/email/verify")
+def email_verify(data: EmailVerifyIn, response: Response, db: Session = Depends(get_db)):
+    email = _normalize_email(data.email)
+    code = data.code.strip()
+    if not code.isdigit() or len(code) != 6:
+        raise HTTPException(400, "Код должен состоять из 6 цифр")
+
+    # ищем самый свежий неиспользованный код для этого email
+    row = (
+        db.query(EmailCode)
+        .filter(EmailCode.email == email, EmailCode.used == False)
+        .order_by(EmailCode.id.desc())
+        .first()
+    )
+    if not row:
+        raise HTTPException(400, "Код не найден или уже использован. Запросите новый.")
+    if row.expires_at < datetime.now():
+        raise HTTPException(410, "Срок действия кода истёк. Запросите новый.")
+    if row.attempts >= EMAIL_CODE_MAX_ATTEMPTS:
+        row.used = True
+        db.commit()
+        raise HTTPException(429, "Слишком много неверных попыток. Запросите новый код.")
+
+    if row.code_hash != _hash_code(code):
+        row.attempts += 1
+        db.commit()
+        remaining = EMAIL_CODE_MAX_ATTEMPTS - row.attempts
+        raise HTTPException(400, f"Неверный код. Осталось попыток: {remaining}")
+
+    # код верный
+    row.used = True
+    db.commit()
+
+    # whitelist: если БД пустая - первый юзер становится админом
+    has_users = db.query(AllowedUser).first() is not None
+    if not has_users:
+        db.add(AllowedUser(tg_id=-1, label=email, email=email))
+        db.commit()
+
+    user = _find_allowed_by_email(db, email)
+    if not user:
+        raise HTTPException(403, "Email не в списке разрешённых")
+
+    _set_session_cookie(response, db, user.tg_id, None, user.label)
+    return {"ok": True, "email": email, "label": user.label}

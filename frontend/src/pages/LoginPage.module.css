@@ -46,6 +46,20 @@
   margin: 12px 0 0;
 }
 
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.codeInput {
+  font-size: 24px;
+  letter-spacing: 8px;
+  text-align: center;
+  font-weight: 600;
+}
+
 .waitBox {
   display: flex;
   flex-direction: column;

@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     # белый список tg_id через запятую: "327410144,123456789"
     auth_allowed_tg_ids: str = ""
 
+    # SMTP для отправки кодов на почту (mail.ru)
+    smtp_host: str = "smtp.mail.ru"
+    smtp_port: int = 465  # SSL
+    smtp_user: str = ""  # full email, например "kiiara@mail.ru"
+    smtp_password: str = ""  # пароль приложения из настроек mail.ru
+    smtp_from: str = ""  # с какого адреса слать (обычно = smtp_user)
+    # whitelist email через запятую (для bootstrap первого юзера)
+    auth_allowed_emails: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
