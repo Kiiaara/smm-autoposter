@@ -25,24 +25,28 @@ export default function DualTextEditor() {
   if (hasTg && !hasPlain) return <div className={styles.single}><RichTextEditor /></div>
   if (!hasTg && hasPlain) return <div className={styles.single}><PlainTextEditor /></div>
 
+  // подсчитаем какие именно платформы plain
+  const plainPlatforms = selectedNetworks.filter(n => n !== 'tg')
+  const plainLabel = plainPlatforms.map(p => p.toUpperCase()).join(' · ')
+
   return (
     <div className={styles.wrapper}>
-      <div className={styles.tabs}>
+      <div className={styles.pills}>
         <button
           type="button"
-          className={`${styles.tab} ${tab === 'tg' ? styles.active : ''}`}
+          className={`${styles.pill} ${tab === 'tg' ? styles.active : ''} ${styles.pillTg}`}
           onClick={() => setTab('tg')}
         >
+          <span className={styles.pillIcon}>TG</span>
           Telegram
-          <span className={styles.tabHint}>Markdown, форматирование</span>
         </button>
         <button
           type="button"
-          className={`${styles.tab} ${tab === 'plain' ? styles.active : ''}`}
+          className={`${styles.pill} ${tab === 'plain' ? styles.active : ''} ${styles.pillPlain}`}
           onClick={() => setTab('plain')}
         >
-          ВК / IG / Max
-          <span className={styles.tabHint}>Только текст</span>
+          <span className={styles.pillIcon}>{plainPlatforms[0]?.toUpperCase()}</span>
+          {plainLabel}
         </button>
       </div>
       <div className={styles.content}>

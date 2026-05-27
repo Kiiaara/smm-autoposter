@@ -1,31 +1,56 @@
-.wrapper { display: flex; flex-direction: column; gap: 0; }
-.empty { color: var(--text2); font-size: 13px; text-align: center; padding: 24px; }
+.wrapper { display: flex; flex-direction: column; gap: 12px; }
+.empty { color: var(--text2); font-size: var(--fs-sm); text-align: center; padding: 24px; }
 .single {}
 
-.tabs {
+.pills {
   display: flex;
-  border-bottom: 1px solid var(--border);
-  gap: 0;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.tab {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 10px 16px;
-  border: none;
-  background: none;
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--text2);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s;
-  font-size: 14px;
-  font-weight: 500;
+  transition: all 0.15s;
 }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.pill:hover {
+  color: var(--text);
+  border-color: var(--text2);
+}
 
-.tabHint { font-size: 10px; color: var(--text2); font-weight: 400; }
+.pillIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--bg);
+  letter-spacing: 0.3px;
+}
 
-.content { padding-top: 12px; }
+/* Активная вкладка - цвет платформы как фон */
+.pill.active {
+  color: #fff;
+  border-color: transparent;
+}
+.pillTg.active { background: #29b6f6; }
+.pillTg.active .pillIcon { background: rgba(0,0,0,0.25); }
+
+.pillPlain.active { background: #4a76a8; }
+.pillPlain.active .pillIcon { background: rgba(0,0,0,0.25); }
+
+.content {}
