@@ -47,7 +47,12 @@ app.add_middleware(
 
 
 # Auth middleware: блокируем все /api/* кроме whitelist
-PUBLIC_PATHS = {"/api/health", "/api/auth/telegram", "/api/auth/me", "/api/auth/logout", "/api/auth/config"}
+PUBLIC_PATHS = {
+    "/api/health",
+    "/api/auth/telegram", "/api/auth/me", "/api/auth/logout", "/api/auth/config",
+    "/api/auth/bot/start", "/api/auth/bot/check",
+}
+PUBLIC_PREFIXES = ("/api/auth/bot/webhook/",)
 
 
 @app.middleware("http")
@@ -58,6 +63,8 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     # пропускаем public пути
     if path in PUBLIC_PATHS:
+        return await call_next(request)
+    if any(path.startswith(p) for p in PUBLIC_PREFIXES):
         return await call_next(request)
     # если auth-бот не настроен (локалка) - пропускаем
     if not settings.auth_bot_token:

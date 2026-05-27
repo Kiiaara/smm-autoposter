@@ -12,11 +12,13 @@ from config import settings
 from database import get_db, SessionLocal
 from models.auth_session import AuthSession
 from models.allowed_user import AllowedUser
+from models.login_request import LoginRequest
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SESSION_COOKIE = "otlozhka_session"
 SESSION_TTL_DAYS = 30
+LOGIN_REQUEST_TTL_MINUTES = 10
 
 
 def _bootstrap_allowed_from_env():
@@ -191,3 +193,132 @@ def remove_allowed(tg_id: int, user: AuthSession = Depends(get_current_user), db
     db.query(AuthSession).filter(AuthSession.tg_id == tg_id).delete()
     db.commit()
     return {"ok": True}
+
+
+# ── Login через бота (свой flow, без telegram-widget.js) ────
+# Юзер жмёт "Войти" → фронт зовёт /bot/start → получает {token, deeplink}
+# Юзер открывает deeplink t.me/<bot>?start=login_<token> → пишет боту /start
+# TG шлёт webhook → бот ставит approved=true в LoginRequest
+# Фронт поллит /bot/check?token=... → когда approved → ставим cookie сессии
+
+class BotStartResponse(BaseModel):
+    token: str
+    deeplink: str
+    expires_in: int  # секунд
+
+
+def _cleanup_expired_requests(db: Session):
+    db.query(LoginRequest).filter(LoginRequest.expires_at < datetime.now()).delete()
+    db.commit()
+
+
+def _set_session_cookie(response: Response, db: Session, tg_id: int, username: Optional[str], first_name: Optional[str]) -> str:
+    token = secrets.token_hex(32)
+    expires = datetime.now() + timedelta(days=SESSION_TTL_DAYS)
+    db.add(AuthSession(
+        token=token, tg_id=tg_id, tg_username=username,
+        tg_first_name=first_name, expires_at=expires,
+    ))
+    db.commit()
+    response.set_cookie(
+        SESSION_COOKIE, token,
+        max_age=SESSION_TTL_DAYS * 86400,
+        httponly=True, secure=True, samesite="lax", path="/",
+    )
+    return token
+
+
+@router.post("/bot/start", response_model=BotStartResponse)
+def bot_login_start(db: Session = Depends(get_db)):
+    """Создаёт запрос на вход. Возвращает deeplink, который фронт открывает в TG."""
+    if not settings.auth_bot_username:
+        raise HTTPException(500, "auth_bot_username не настроен на сервере")
+    _cleanup_expired_requests(db)
+    token = secrets.token_hex(16)  # 32 hex chars - помещается в /start (max 64)
+    expires = datetime.now() + timedelta(minutes=LOGIN_REQUEST_TTL_MINUTES)
+    db.add(LoginRequest(token=token, expires_at=expires))
+    db.commit()
+    deeplink = f"https://t.me/{settings.auth_bot_username}?start=login_{token}"
+    return BotStartResponse(token=token, deeplink=deeplink, expires_in=LOGIN_REQUEST_TTL_MINUTES * 60)
+
+
+@router.get("/bot/check")
+def bot_login_check(token: str, response: Response, db: Session = Depends(get_db)):
+    """Фронт поллит. Когда approved=true - ставим сессию и возвращаем user."""
+    req = db.get(LoginRequest, token)
+    if not req:
+        raise HTTPException(404, "Запрос не найден")
+    if req.expires_at < datetime.now():
+        db.delete(req)
+        db.commit()
+        raise HTTPException(410, "Срок действия запроса истёк")
+    if not req.approved:
+        return {"approved": False}
+
+    # подтверждено - проверяем whitelist
+    tg_id = req.tg_id
+    if not _has_any_users(db):
+        db.add(AllowedUser(tg_id=tg_id, label=req.tg_first_name or req.tg_username or "owner"))
+        db.commit()
+    elif not _is_allowed(db, tg_id):
+        db.delete(req)
+        db.commit()
+        raise HTTPException(403, f"Доступ запрещён. Твой TG ID: {tg_id}. Попроси администратора добавить тебя.")
+
+    _set_session_cookie(response, db, tg_id, req.tg_username, req.tg_first_name)
+    username = req.tg_username
+    first_name = req.tg_first_name
+    db.delete(req)
+    db.commit()
+    return {"approved": True, "tg_id": tg_id, "username": username, "first_name": first_name}
+
+
+@router.post("/bot/webhook/{secret}")
+async def bot_webhook(secret: str, request: Request, db: Session = Depends(get_db)):
+    """Telegram шлёт сюда все апдейты бота. Ловим /start login_<token>."""
+    if not settings.auth_webhook_secret or secret != settings.auth_webhook_secret:
+        raise HTTPException(403, "forbidden")
+
+    update = await request.json()
+    msg = update.get("message") or update.get("edited_message")
+    if not msg:
+        return {"ok": True}
+    text = (msg.get("text") or "").strip()
+    if not text.startswith("/start"):
+        return {"ok": True}
+
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        return {"ok": True}
+    payload = parts[1].strip()
+    if not payload.startswith("login_"):
+        return {"ok": True}
+
+    token = payload[len("login_"):]
+    req = db.get(LoginRequest, token)
+    if not req or req.expires_at < datetime.now():
+        # отвечаем юзеру что ссылка протухла
+        await _send_bot_message(msg["from"]["id"], "Ссылка устарела. Открой сайт и нажми \"Войти\" ещё раз.")
+        return {"ok": True}
+
+    user = msg.get("from") or {}
+    req.tg_id = user.get("id")
+    req.tg_username = user.get("username")
+    req.tg_first_name = user.get("first_name")
+    req.approved = True
+    db.commit()
+
+    await _send_bot_message(user.get("id"), f"Готово, {user.get('first_name') or 'друг'}! Возвращайся на сайт - ты залогинен.")
+    return {"ok": True}
+
+
+async def _send_bot_message(chat_id: int, text: str):
+    if not settings.auth_bot_token or not chat_id:
+        return
+    import httpx
+    url = f"https://api.telegram.org/bot{settings.auth_bot_token}/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            await c.post(url, json={"chat_id": chat_id, "text": text})
+    except Exception:
+        pass  # webhook не должен падать из-за проблем с отправкой

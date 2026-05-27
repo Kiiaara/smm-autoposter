@@ -5,6 +5,7 @@ from .reminder import Reminder
 from .stats import PostStats, ChannelSnapshot
 from .auth_session import AuthSession
 from .allowed_user import AllowedUser
+from .login_request import LoginRequest
 
 __all__ = [
     "Post", "PostTarget", "PostStatus", "PostTargetStatus",
@@ -14,4 +15,5 @@ __all__ = [
     "PostStats", "ChannelSnapshot",
     "AuthSession",
     "AllowedUser",
+    "LoginRequest",
 ]

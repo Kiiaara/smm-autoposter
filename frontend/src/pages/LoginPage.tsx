@@ -4,54 +4,77 @@ import toast from 'react-hot-toast'
 import client from '../api/client'
 import styles from './LoginPage.module.css'
 
-const BOT_USERNAME = 'posts_tpabomah_bot'
+type Phase = 'checking' | 'idle' | 'waiting' | 'expired'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [checking, setChecking] = useState(true)
+  const [phase, setPhase] = useState<Phase>('checking')
+  const [deeplink, setDeeplink] = useState<string>('')
+  const tokenRef = useRef<string>('')
+  const pollRef = useRef<number | null>(null)
+  const expiryRef = useRef<number>(0)
 
-  // если уже залогинен - сразу на главную
+  // если уже залогинен - на главную
   useEffect(() => {
     client.get('/auth/me')
       .then(() => navigate('/', { replace: true }))
-      .catch(() => setChecking(false))
+      .catch(() => setPhase('idle'))
   }, [navigate])
 
-  // подгружаем TG-виджет
-  useEffect(() => {
-    if (checking) return
-    const el = containerRef.current
-    if (!el) return
-    el.innerHTML = ''
+  function stopPolling() {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
 
-    // глобальный коллбэк, который вызовет виджет TG после логина
-    ;(window as any).onTelegramAuth = async (user: any) => {
-      try {
-        await client.post('/auth/telegram', user)
-        toast.success(`Привет, ${user.first_name || 'пользователь'}!`)
+  useEffect(() => () => stopPolling(), [])
+
+  async function startLogin() {
+    try {
+      const { data } = await client.post('/auth/bot/start')
+      tokenRef.current = data.token
+      setDeeplink(data.deeplink)
+      expiryRef.current = Date.now() + data.expires_in * 1000
+      setPhase('waiting')
+      // открываем deeplink в новой вкладке
+      window.open(data.deeplink, '_blank', 'noopener')
+      // начинаем поллинг
+      pollRef.current = window.setInterval(checkLogin, 2000)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Не удалось создать запрос на вход')
+    }
+  }
+
+  async function checkLogin() {
+    if (!tokenRef.current) return
+    if (Date.now() > expiryRef.current) {
+      stopPolling()
+      setPhase('expired')
+      return
+    }
+    try {
+      const { data } = await client.get('/auth/bot/check', { params: { token: tokenRef.current } })
+      if (data.approved) {
+        stopPolling()
+        toast.success(`Привет, ${data.first_name || 'друг'}!`)
         navigate('/', { replace: true })
-      } catch (e: any) {
-        toast.error(e?.response?.data?.detail ?? 'Ошибка авторизации')
       }
+    } catch (e: any) {
+      const status = e?.response?.status
+      if (status === 403) {
+        stopPolling()
+        toast.error(e.response.data?.detail ?? 'Доступ запрещён')
+        setPhase('idle')
+      } else if (status === 404 || status === 410) {
+        stopPolling()
+        setPhase('expired')
+      }
+      // прочие ошибки - просто продолжаем поллить
     }
+  }
 
-    const script = document.createElement('script')
-    script.src = 'https://telegram.org/js/telegram-widget.js?22'
-    script.async = true
-    script.setAttribute('data-telegram-login', BOT_USERNAME)
-    script.setAttribute('data-size', 'large')
-    script.setAttribute('data-radius', '8')
-    script.setAttribute('data-onauth', 'onTelegramAuth(user)')
-    script.setAttribute('data-request-access', 'write')
-    el.appendChild(script)
-
-    return () => {
-      delete (window as any).onTelegramAuth
-    }
-  }, [checking, navigate])
-
-  if (checking) {
+  if (phase === 'checking') {
     return <div className={styles.wrap}><div className={styles.card}>Проверка сессии...</div></div>
   }
 
@@ -60,7 +83,42 @@ export default function LoginPage() {
       <div className={styles.card}>
         <h1 className={styles.title}>Otlozhka ot Kiiara</h1>
         <p className={styles.subtitle}>Вход через Telegram</p>
-        <div ref={containerRef} className={styles.widget} />
+
+        {phase === 'idle' && (
+          <>
+            <button type="button" className="btn btn-primary" onClick={startLogin} style={{ minWidth: 220 }}>
+              Войти через Telegram
+            </button>
+            <p className={styles.hint}>
+              Откроется чат с ботом. Нажмите там "Старт" - и вернётесь сюда залогиненной.
+            </p>
+          </>
+        )}
+
+        {phase === 'waiting' && (
+          <>
+            <div className={styles.waitBox}>
+              <div className={styles.spinner} />
+              <p style={{ margin: 0 }}>Ждём подтверждения в Telegram...</p>
+            </div>
+            <a href={deeplink} target="_blank" rel="noopener" className="btn btn-secondary">
+              Открыть бота ещё раз
+            </a>
+            <p className={styles.hint}>
+              В чате с ботом нажмите "Старт" (или /start). Окно закроется автоматически.
+            </p>
+          </>
+        )}
+
+        {phase === 'expired' && (
+          <>
+            <p style={{ color: 'var(--danger)', margin: 0 }}>Срок ссылки истёк (10 минут).</p>
+            <button type="button" className="btn btn-primary" onClick={startLogin} style={{ minWidth: 220 }}>
+              Попробовать снова
+            </button>
+          </>
+        )}
+
         <p className={styles.hint}>Доступ только для разрешённых пользователей.</p>
       </div>
     </div>

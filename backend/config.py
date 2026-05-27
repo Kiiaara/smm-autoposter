@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # TG-логин: бот через которого логинимся (домен должен быть привязан к нему в BotFather)
     # обычно тот же что reminder_bot_token
     auth_bot_token: str = ""
+    # username бота без @ (для deeplink t.me/<username>?start=...)
+    auth_bot_username: str = ""
+    # секрет в URL webhook'а - чтобы случайные запросы не дёргали хэндлер
+    # webhook URL будет /api/auth/bot/webhook/<secret>
+    auth_webhook_secret: str = ""
     # белый список tg_id через запятую: "327410144,123456789"
     auth_allowed_tg_ids: str = ""
 
