@@ -200,41 +200,65 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 function SubscribersChart({ series }: { series: any[] }) {
-  const W = 760, H = 240, PAD = 36
-  const allPoints = series.flatMap(s => s.points)
-  if (allPoints.length === 0) return null
-
-  const allDates = Array.from(new Set(allPoints.map((p: any) => p.date))).sort()
-  const maxY = Math.max(...allPoints.map((p: any) => p.subscribers))
-  const minY = Math.min(...allPoints.map((p: any) => p.subscribers))
-  const rangeY = Math.max(maxY - minY, 1)
-
-  const xStep = (W - PAD * 2) / Math.max(allDates.length - 1, 1)
+  // показываем только каналы у которых есть минимум 2 точки
+  const valid = series.filter(s => s.points.length >= 2)
+  if (valid.length === 0) return null
 
   return (
-    <div className={styles.chartWrap}>
-      <svg viewBox={`0 0 ${W} ${H}`} className={styles.chart}>
-        {[0, 0.25, 0.5, 0.75, 1].map(t => (
-          <line key={t} x1={PAD} x2={W - PAD} y1={PAD + (H - PAD * 2) * t} y2={PAD + (H - PAD * 2) * t} stroke="#2e3340" strokeWidth="1" />
-        ))}
-        {series.map(s => {
-          const color = PLATFORM_COLORS[s.platform] || '#7b61ff'
-          const pts = s.points.map((p: any) => {
-            const x = PAD + allDates.indexOf(p.date) * xStep
-            const y = PAD + (H - PAD * 2) - ((p.subscribers - minY) / rangeY) * (H - PAD * 2)
-            return `${x},${y}`
-          }).join(' ')
-          return <polyline key={s.channel_id} fill="none" stroke={color} strokeWidth="2.5" points={pts} />
-        })}
+    <div className={styles.miniChartsGrid}>
+      {valid.map(s => (
+        <MiniChannelChart key={s.channel_id} series={s} />
+      ))}
+    </div>
+  )
+}
+
+function MiniChannelChart({ series }: { series: any }) {
+  const W = 300, H = 120, PAD_X = 8, PAD_TOP = 10, PAD_BOTTOM = 18
+  const pts = series.points
+  const color = PLATFORM_COLORS[series.platform] || '#7b61ff'
+
+  const values = pts.map((p: any) => p.subscribers)
+  const maxY = Math.max(...values)
+  const minY = Math.min(...values)
+  const rangeY = Math.max(maxY - minY, 1)
+  const xStep = (W - PAD_X * 2) / Math.max(pts.length - 1, 1)
+
+  const first = values[0]
+  const last = values[values.length - 1]
+  const diff = last - first
+  const diffPct = first > 0 ? (diff / first) * 100 : 0
+
+  const polyPoints = pts.map((p: any, i: number) => {
+    const x = PAD_X + i * xStep
+    const y = PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) - ((p.subscribers - minY) / rangeY) * (H - PAD_TOP - PAD_BOTTOM)
+    return `${x},${y}`
+  }).join(' ')
+
+  const areaPoints = `${PAD_X},${H - PAD_BOTTOM} ${polyPoints} ${PAD_X + (pts.length - 1) * xStep},${H - PAD_BOTTOM}`
+
+  return (
+    <div className={styles.miniChart}>
+      <div className={styles.miniChartHead}>
+        <span className={styles.platformBadge} style={{ background: color }}>
+          {PLATFORM_LABELS[series.platform]}
+        </span>
+        <span className={styles.miniChartName}>{series.name}</span>
+      </div>
+      <div className={styles.miniChartValues}>
+        <span className={styles.miniChartCurrent}>{last.toLocaleString('ru')}</span>
+        <span className={diff >= 0 ? styles.diffPositive : styles.diffNegative}>
+          {diff >= 0 ? '+' : ''}{diff.toLocaleString('ru')}
+          {first > 0 && ` (${diff >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className={styles.miniSvg} preserveAspectRatio="none">
+        <polygon points={areaPoints} fill={color} opacity="0.15" />
+        <polyline fill="none" stroke={color} strokeWidth="2" points={polyPoints} />
       </svg>
-      <div className={styles.chartLegend}>
-        {series.map(s => (
-          <div key={s.channel_id} className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: PLATFORM_COLORS[s.platform] }} />
-            {s.name}
-            {s.points.length > 0 && <strong> {s.points[s.points.length - 1].subscribers.toLocaleString('ru')}</strong>}
-          </div>
-        ))}
+      <div className={styles.miniChartDates}>
+        <span>{pts[0].date}</span>
+        <span>{pts[pts.length - 1].date}</span>
       </div>
     </div>
   )
