@@ -216,17 +216,25 @@ async def publish_to_telegram(
 
         if media_paths and not poll_json:
             base = settings.base_url.rstrip("/")
+
+            def _media_url(p: str) -> str:
+                # нормализуем путь: убираем ведущий слеш и дублирующийся uploads/
+                p = p.lstrip("/")
+                if p.startswith("uploads/"):
+                    p = p[len("uploads/"):]
+                return f"{base}/uploads/{p}"
+
             if len(media_paths) == 1:
                 payload = {
                     "chat_id": chat_id,
-                    "photo": f"{base}/{media_paths[0]}",
+                    "photo": _media_url(media_paths[0]),
                 }
                 if send_text_html:
                     payload["caption"] = send_text_html
                     payload["parse_mode"] = "HTML"
                 r = await _tg_request(bot_token, "sendPhoto", payload)
             else:
-                media = [{"type": "photo", "media": f"{base}/{p}"} for p in media_paths]
+                media = [{"type": "photo", "media": _media_url(p)} for p in media_paths]
                 if send_text_html:
                     media[0]["caption"] = send_text_html
                     media[0]["parse_mode"] = "HTML"
