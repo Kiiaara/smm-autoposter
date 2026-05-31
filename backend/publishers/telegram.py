@@ -186,6 +186,25 @@ async def _tg_request(bot_token: str, method: str, data: Dict) -> Dict:
     return resp.json()
 
 
+def _local_path(p: str) -> str:
+    """Конвертит media_path из БД в локальный путь на диске.
+    В БД может быть как 'uploads/abc.jpg', так и просто 'abc.jpg'."""
+    import os
+    p = p.lstrip("/")
+    if p.startswith("uploads/"):
+        return os.path.join(settings.upload_dir, p[len("uploads/"):])
+    return os.path.join(settings.upload_dir, p)
+
+
+async def _tg_request_multipart(bot_token: str, method: str, data: Dict, files: Dict) -> Dict:
+    """Шлёт запрос с прикреплёнными файлами через multipart/form-data.
+    Используется когда TG не может скачать картинку по URL (или мы не хотим светить URL)."""
+    url = f"https://api.telegram.org/bot{bot_token}/{method}"
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(url, data=data, files=files)
+    return resp.json()
+
+
 async def publish_to_telegram(
     bot_token: str,
     chat_id: str,
@@ -215,33 +234,42 @@ async def publish_to_telegram(
         message_id = None
 
         if media_paths and not poll_json:
-            base = settings.base_url.rstrip("/")
-
-            def _media_url(p: str) -> str:
-                # нормализуем путь: убираем ведущий слеш и дублирующийся uploads/
-                p = p.lstrip("/")
-                if p.startswith("uploads/"):
-                    p = p[len("uploads/"):]
-                return f"{base}/uploads/{p}"
+            # Грузим файлы напрямую через multipart - не зависим от TG которому надо качать наш URL.
+            # Это и быстрее, и работает даже если домен где-то блокируется.
+            import os, mimetypes
 
             if len(media_paths) == 1:
-                payload = {
-                    "chat_id": chat_id,
-                    "photo": _media_url(media_paths[0]),
-                }
-                if send_text_html:
-                    payload["caption"] = send_text_html
-                    payload["parse_mode"] = "HTML"
-                r = await _tg_request(bot_token, "sendPhoto", payload)
+                path = _local_path(media_paths[0])
+                fname = os.path.basename(path)
+                mime = mimetypes.guess_type(fname)[0] or "image/jpeg"
+                with open(path, "rb") as fh:
+                    payload = {"chat_id": chat_id}
+                    if send_text_html:
+                        payload["caption"] = send_text_html
+                        payload["parse_mode"] = "HTML"
+                    files = {"photo": (fname, fh.read(), mime)}
+                    r = await _tg_request_multipart(bot_token, "sendPhoto", payload, files)
             else:
-                media = [{"type": "photo", "media": _media_url(p)} for p in media_paths]
+                files = {}
+                media = []
+                file_handles = []
+                for idx, mp in enumerate(media_paths):
+                    path = _local_path(mp)
+                    fname = os.path.basename(path)
+                    mime = mimetypes.guess_type(fname)[0] or "image/jpeg"
+                    with open(path, "rb") as fh:
+                        content = fh.read()
+                    attach_name = f"photo{idx}"
+                    files[attach_name] = (fname, content, mime)
+                    media.append({"type": "photo", "media": f"attach://{attach_name}"})
                 if send_text_html:
                     media[0]["caption"] = send_text_html
                     media[0]["parse_mode"] = "HTML"
-                r = await _tg_request(bot_token, "sendMediaGroup", {
+                payload = {
                     "chat_id": chat_id,
-                    "media": media,
-                })
+                    "media": json.dumps(media),
+                }
+                r = await _tg_request_multipart(bot_token, "sendMediaGroup", payload, files)
             if not r.get("ok"):
                 return PublishResult(ok=False, error=r.get("description", "TG error"))
             result = r.get("result")
