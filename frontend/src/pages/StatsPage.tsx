@@ -231,12 +231,12 @@ function MiniChannelChart({ series }: { series: any }) {
   const diff = last - first
   const diffPct = first > 0 ? (diff / first) * 100 : 0
 
-  const coords = pts.map((p: any, i: number) => ({
+  const coords: { x: number; y: number; point: any }[] = pts.map((p: any, i: number) => ({
     x: PAD_X + i * xStep,
     y: PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) - ((p.subscribers - minY) / rangeY) * (H - PAD_TOP - PAD_BOTTOM),
     point: p,
   }))
-  const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
+  const polyPoints = coords.map((c) => `${c.x},${c.y}`).join(' ')
   const areaPoints = `${PAD_X},${H - PAD_BOTTOM} ${polyPoints} ${PAD_X + (pts.length - 1) * xStep},${H - PAD_BOTTOM}`
 
   function onMove(e: React.MouseEvent<SVGSVGElement>) {
