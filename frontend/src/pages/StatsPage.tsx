@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -217,6 +217,8 @@ function MiniChannelChart({ series }: { series: any }) {
   const W = 300, H = 120, PAD_X = 8, PAD_TOP = 10, PAD_BOTTOM = 18
   const pts = series.points
   const color = PLATFORM_COLORS[series.platform] || '#7b61ff'
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [hover, setHover] = useState<{ x: number; y: number; idx: number } | null>(null)
 
   const values = pts.map((p: any) => p.subscribers)
   const maxY = Math.max(...values)
@@ -229,13 +231,28 @@ function MiniChannelChart({ series }: { series: any }) {
   const diff = last - first
   const diffPct = first > 0 ? (diff / first) * 100 : 0
 
-  const polyPoints = pts.map((p: any, i: number) => {
-    const x = PAD_X + i * xStep
-    const y = PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) - ((p.subscribers - minY) / rangeY) * (H - PAD_TOP - PAD_BOTTOM)
-    return `${x},${y}`
-  }).join(' ')
-
+  const coords = pts.map((p: any, i: number) => ({
+    x: PAD_X + i * xStep,
+    y: PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) - ((p.subscribers - minY) / rangeY) * (H - PAD_TOP - PAD_BOTTOM),
+    point: p,
+  }))
+  const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
   const areaPoints = `${PAD_X},${H - PAD_BOTTOM} ${polyPoints} ${PAD_X + (pts.length - 1) * xStep},${H - PAD_BOTTOM}`
+
+  function onMove(e: React.MouseEvent<SVGSVGElement>) {
+    const svg = svgRef.current
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    // переводим клиентские координаты в координаты viewBox
+    const xInVB = ((e.clientX - rect.left) / rect.width) * W
+    // ближайший индекс
+    const idx = Math.max(0, Math.min(coords.length - 1, Math.round((xInVB - PAD_X) / xStep)))
+    setHover({ x: coords[idx].x, y: coords[idx].y, idx })
+  }
+
+  const hoverPoint = hover ? coords[hover.idx] : null
+  // позиция tooltip в % от ширины SVG (т.к. preserveAspectRatio=none — viewBox растягивается)
+  const tooltipLeftPct = hoverPoint ? (hoverPoint.x / W) * 100 : 0
 
   return (
     <div className={styles.miniChart}>
@@ -252,10 +269,34 @@ function MiniChannelChart({ series }: { series: any }) {
           {first > 0 && ` (${diff >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`}
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className={styles.miniSvg} preserveAspectRatio="none">
-        <polygon points={areaPoints} fill={color} opacity="0.15" />
-        <polyline fill="none" stroke={color} strokeWidth="2" points={polyPoints} />
-      </svg>
+      <div className={styles.miniSvgWrap}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className={styles.miniSvg}
+          preserveAspectRatio="none"
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+        >
+          <polygon points={areaPoints} fill={color} opacity="0.15" />
+          <polyline fill="none" stroke={color} strokeWidth="2" points={polyPoints} />
+          {hoverPoint && (
+            <>
+              <line x1={hoverPoint.x} x2={hoverPoint.x} y1={PAD_TOP} y2={H - PAD_BOTTOM} stroke={color} strokeWidth="1" opacity="0.5" strokeDasharray="3 3" />
+              <circle cx={hoverPoint.x} cy={hoverPoint.y} r="4" fill={color} stroke="#fff" strokeWidth="1.5" />
+            </>
+          )}
+        </svg>
+        {hoverPoint && (
+          <div
+            className={styles.miniTooltip}
+            style={{ left: `${tooltipLeftPct}%` }}
+          >
+            <div className={styles.miniTooltipValue}>{hoverPoint.point.subscribers.toLocaleString('ru')}</div>
+            <div className={styles.miniTooltipDate}>{hoverPoint.point.date}</div>
+          </div>
+        )}
+      </div>
       <div className={styles.miniChartDates}>
         <span>{pts[0].date}</span>
         <span>{pts[pts.length - 1].date}</span>
