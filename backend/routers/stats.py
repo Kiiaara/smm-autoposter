@@ -124,23 +124,24 @@ def overview(period_days: int = 30, db: Session = Depends(get_db)):
             agg["likes"] += s.likes
             agg["comments"] += s.comments
 
-    # Сравнение каналов - все активные VK (TG будет с Telethon)
+    # Сравнение каналов - все активные (VK + TG если настроен Telethon)
     channels = db.query(Channel).filter(Channel.is_active == True).all()
     channel_summaries: List[ChannelSummary] = []
     for ch in channels:
-        if ch.platform != Platform.vk:
-            continue
         snap = db.query(ChannelSnapshot).filter(
             ChannelSnapshot.channel_id == ch.id,
         ).order_by(desc(ChannelSnapshot.captured_at)).first()
+        # пропускаем каналы без снапшотов с метриками (например IG/MAX)
+        if not snap:
+            continue
         channel_summaries.append(ChannelSummary(
             channel_id=ch.id,
             name=ch.name,
             platform=ch.platform.value,
-            subscribers=snap.subscribers if snap else 0,
-            posts_count=snap.posts_total if snap else 0,
-            avg_views=snap.avg_views if snap else 0,
-            avg_likes=snap.avg_likes if snap else 0,
+            subscribers=snap.subscribers or 0,
+            posts_count=snap.posts_total or 0,
+            avg_views=snap.avg_views or 0,
+            avg_likes=snap.avg_likes or 0,
         ))
 
     # Срез по нашим постам

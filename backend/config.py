@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # whitelist email через запятую (для bootstrap первого юзера)
     auth_allowed_emails: str = ""
 
+    # Telethon (MTProto): для сбора статистики из TG-каналов как юзер
+    # api_id и api_hash с my.telegram.org, session_string - результат генератора telethon_login.py
+    telethon_api_id: int = 0
+    telethon_api_hash: str = ""
+    telethon_session_string: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

@@ -103,7 +103,15 @@ async def collect_vk_channel_subs(channel: Channel, db: Session):
 
 
 async def collect_tg_channel_subs(channel: Channel, db: Session):
-    """Fetch TG channel member count via Bot API."""
+    """Снапшот TG-канала. Если Telethon настроен - тянем полный набор метрик
+    (подписчики + средние views/likes/reposts/comments). Иначе fallback на Bot API
+    (только member count)."""
+    from services import tg_stats
+    if tg_stats.is_configured():
+        await tg_stats.collect_tg_channel_avg(channel, db)
+        return
+
+    # fallback: только подписчики через Bot API
     cfg = channel.config_json or {}
     token = cfg.get("bot_token", "")
     chat_id = cfg.get("chat_id", "")
@@ -137,13 +145,15 @@ async def run_post_stats_collection():
             PostTarget.published_at >= cutoff,
         ).all()
 
+        from services import tg_stats
         for t in targets:
             if not t.channel:
                 continue
             try:
                 if t.channel.platform == Platform.vk:
                     await collect_vk_post_stats(t, db)
-                # TG via Telethon будет добавлен позже
+                elif t.channel.platform == Platform.tg and tg_stats.is_configured():
+                    await tg_stats.collect_tg_post_stats(t, db)
             except Exception as e:
                 print(f"Failed to collect stats for target {t.id}: {e}")
         db.commit()
