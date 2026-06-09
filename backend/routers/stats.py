@@ -109,28 +109,23 @@ async def overview(period_days: int = 30, db: Session = Depends(get_db)):
     ).all()
     latest = _latest_stats_subquery(db)
 
-    # TG: тянем метрики наших TG-таргетов из TGStat (в БД их нет)
-    # Кешируем посты канала за запрос - вместо отдельного запроса на каждый таргет
-    tg_posts_cache: Dict[int, Dict[int, dict]] = {}  # channel_id -> {msg_id: post}
+    # TG: метрики наших TG-таргетов берём из channel_posts (Telethon-сборщик),
+    # а не из TGStat. Один запрос на все каналы - индекс по (channel_id, message_id).
+    tg_posts_cache: Dict[int, Dict[int, ChannelPost]] = {}  # channel_id -> {msg_id: ChannelPost}
     tg_target_ids: set = set()
-    from services import tg_stats
-    if tg_stats.is_configured():
-        from models.channel import Platform as _Plat
-        tg_targets = [t for t in targets if t.channel and t.channel.platform == _Plat.tg and t.published_message_id]
-        # группируем по каналу
-        by_ch: Dict[int, list] = {}
-        for t in tg_targets:
-            by_ch.setdefault(t.channel_id, []).append(t)
-        for ch_id, ts in by_ch.items():
-            ch = ts[0].channel
-            try:
-                posts = await tg_stats.fetch_channel_posts(ch, limit=100, period_days=period_days)
-                tg_posts_cache[ch_id] = {int(p.get("id") or p.get("message_id") or 0): p for p in posts}
-            except Exception:
-                tg_posts_cache[ch_id] = {}
+    from models.channel import Platform as _Plat
+    tg_targets = [t for t in targets if t.channel and t.channel.platform == _Plat.tg and t.published_message_id]
+    if tg_targets:
+        ch_ids = {t.channel_id for t in tg_targets}
+        cps = db.query(ChannelPost).filter(
+            ChannelPost.channel_id.in_(ch_ids),
+            ChannelPost.published_at >= since,
+        ).all()
+        for cp in cps:
+            tg_posts_cache.setdefault(cp.channel_id, {})[int(cp.message_id)] = cp
 
     def _tg_metrics_for_target(t: PostTarget):
-        """Возвращает (views, likes, reposts, comments) для TG-таргета из кеша TGStat."""
+        """(views, likes, reposts, comments) для TG-таргета из channel_posts."""
         if not t.channel or t.channel.platform.value != "tg":
             return None
         cache = tg_posts_cache.get(t.channel_id) or {}
@@ -140,23 +135,10 @@ async def overview(period_days: int = 30, db: Session = Depends(get_db)):
             return None
         if not msg_id:
             return None
-        p = cache.get(msg_id)
-        if not p:
+        cp = cache.get(msg_id)
+        if not cp:
             return None
-        # парсинг как в top_posts
-        raw_r = p.get("reactions") or p.get("reactions_count")
-        if isinstance(raw_r, dict):
-            likes = sum(int(v or 0) for v in raw_r.values())
-        elif isinstance(raw_r, list):
-            likes = sum(int((r.get("count") or 0) if isinstance(r, dict) else 0) for r in raw_r)
-        else:
-            likes = int(raw_r or 0)
-        raw_c = p.get("comments") or p.get("comments_count")
-        if isinstance(raw_c, dict):
-            comments = int(raw_c.get("count") or 0)
-        else:
-            comments = int(raw_c or 0)
-        return int(p.get("views") or 0), likes, int(p.get("forwards") or 0), comments
+        return int(cp.views or 0), int(cp.reactions or 0), int(cp.forwards or 0), int(cp.comments or 0)
 
     # тоталы + агрегация по каналу для service_posts
     total_views = total_likes = total_comments = 0
