@@ -626,11 +626,11 @@ def tg_sync_push(
 
 @router.get("/tg/embed/{username}/{msg_id}")
 async def tg_embed_proxy(username: str, msg_id: int):
-    """Прокси для t.me/{username}/{msg_id}?embed=1 - чтобы превью грузилось у пользователей
-    без своего VPN. Сервер тянет HTML через xray (TG_PROXY_URL), правит относительные URL
-    на абсолютные и отдаёт клиенту. Картинки и шрифты TG отдаёт прямо со своих CDN -
-    они в РФ не заблочены (заблочен только сам t.me)."""
-    from fastapi.responses import HTMLResponse, Response
+    """Прокси для t.me/.../embed - чтобы превью грузилось у пользователей без своего VPN.
+    Сервер тянет HTML через xray (TG_PROXY_URL), переписывает все ассеты на наш asset-прокси,
+    отдаёт клиенту."""
+    import re as _re
+    from fastapi.responses import HTMLResponse
     import httpx
     from publishers.telegram import _httpx_kwargs
 
@@ -645,13 +645,62 @@ async def tg_embed_proxy(username: str, msg_id: int):
         raise HTTPException(r.status_code, "t.me returned non-200")
 
     html = r.text
-    # Делаем относительные ссылки/ассеты абсолютными к t.me - чтоб картинки/CSS грузились напрямую
+
+    # переписываем относительные ссылки на абсолютные t.me, потом ВСЕ t.me/CDN-ссылки -
+    # на наш asset-прокси /api/stats/tg/asset?url=<encoded>
     html = html.replace('href="/', 'href="https://t.me/')
     html = html.replace('src="/', 'src="https://t.me/')
+
+    def _rewrite_url(m):
+        attr, q, raw = m.group(1), m.group(2), m.group(3)
+        # пропускаем data:, blob:, #anchor
+        if raw.startswith(('data:', 'blob:', '#', 'javascript:')):
+            return m.group(0)
+        from urllib.parse import quote
+        return f'{attr}={q}/api/stats/tg/asset?url={quote(raw, safe="")}{q}'
+
+    # src="..." и background:url(...) - только https://
+    html = _re.sub(r'(src|href)=(")(https://[^"]+)"', _rewrite_url, html)
+    html = _re.sub(r'(src|href)=(\')(https://[^\']+)\'', _rewrite_url, html)
+
     return HTMLResponse(content=html, status_code=200, headers={
         "Cache-Control": "public, max-age=300",
         "Content-Security-Policy": "frame-ancestors 'self'",
     })
+
+
+@router.get("/tg/asset")
+async def tg_asset_proxy(url: str):
+    """Скачивает картинку/css/js с t.me или CDN через xray и отдаёт клиенту.
+    Юзеру не нужен VPN - всё качается серверным каналом."""
+    from fastapi.responses import Response
+    import httpx
+    from publishers.telegram import _httpx_kwargs
+
+    # Минимальная защита: разрешаем только telegram-домены
+    allowed = (
+        "t.me", "telegram.org", "telesco.pe", "cdn-telegram.org",
+    )
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if not any(host == d or host.endswith("." + d) for d in allowed):
+        raise HTTPException(400, "host not allowed")
+
+    try:
+        async with httpx.AsyncClient(**_httpx_kwargs(15), follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    except Exception as e:
+        raise HTTPException(502, f"upstream fetch failed: {e}")
+
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, "upstream non-200")
+
+    ctype = r.headers.get("content-type", "application/octet-stream")
+    return Response(
+        content=r.content,
+        media_type=ctype,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.post("/tg/collect-now")

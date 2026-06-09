@@ -57,7 +57,7 @@ PUBLIC_PATHS = {
     # TG-коллектор - авторизуется своим токеном в заголовке
     "/api/stats/tg/sync/channels", "/api/stats/tg/sync/push",
 }
-PUBLIC_PREFIXES = ("/api/auth/bot/webhook/", "/api/stats/tg/embed/")
+PUBLIC_PREFIXES = ("/api/auth/bot/webhook/", "/api/stats/tg/embed/", "/api/stats/tg/asset")
 
 
 @app.middleware("http")
