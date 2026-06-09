@@ -17,6 +17,14 @@ export default function StatsPage() {
   const [topPlatform, setTopPlatform] = useState<'all' | 'tg' | 'vk'>('all')
   const [topChannelId, setTopChannelId] = useState<number | 'all'>('all')
 
+  // сравнение каналов: до 2-х выбранных
+  const [cmpA, setCmpA] = useState<number | ''>('')
+  const [cmpB, setCmpB] = useState<number | ''>('')
+  // фильтр для секции "По постам через сервис"
+  const [serviceChannelId, setServiceChannelId] = useState<number | 'all'>('all')
+  // выбор канала в секции "Динамика подписчиков"
+  const [subsChannelId, setSubsChannelId] = useState<number | ''>('')
+
   const { data: overview } = useQuery({ queryKey: ['stats-overview', period], queryFn: () => getOverview(period) })
   const { data: topPosts = [] } = useQuery({
     queryKey: ['stats-top', period, sortBy, topPlatform, topChannelId],
@@ -42,6 +50,28 @@ export default function StatsPage() {
     setTimeout(() => setTopChannelId('all'), 0)
   }
 
+  // первая инициализация: в "Сравнение каналов" по умолчанию ставим первый канал
+  if (cmpA === '' && allChannels.length > 0) {
+    setTimeout(() => setCmpA(allChannels[0].channel_id), 0)
+  }
+
+  const cmpChannelA = allChannels.find(c => c.channel_id === cmpA)
+  const cmpChannelB = allChannels.find(c => c.channel_id === cmpB)
+
+  // сервис-посты для фильтра
+  const allServicePosts = overview?.service_posts ?? []
+  const filteredServicePosts = serviceChannelId === 'all'
+    ? allServicePosts
+    : allServicePosts.filter(sp => sp.channel_id === serviceChannelId)
+
+  // динамика подписчиков: серии с реальными данными (>= 2 точек)
+  const subsValidSeries = subSeries.filter(s => s.points.length >= 2)
+  // авто-выбор первого канала с данными
+  if (subsChannelId === '' && subsValidSeries.length > 0) {
+    setTimeout(() => setSubsChannelId(subsValidSeries[0].channel_id), 0)
+  }
+  const subsSelected = subsValidSeries.find(s => s.channel_id === subsChannelId)
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -64,63 +94,103 @@ export default function StatsPage() {
 
       {/* Каналы - сравнение */}
       <Section title="Сравнение каналов">
-        {overview?.channels.length === 0 ? (
+        {allChannels.length === 0 ? (
           <p className={styles.empty}>Пока нет опубликованных постов с собранной статистикой</p>
         ) : (
-          <div className={styles.channelGrid}>
-            {overview?.channels.map(ch => (
-              <div key={ch.channel_id} className={styles.channelCard}>
-                <div className={styles.channelHead}>
-                  <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[ch.platform] }}>
-                    {PLATFORM_LABELS[ch.platform]}
-                  </span>
-                  <span className={styles.channelName}>{ch.name}</span>
-                </div>
-                <div className={styles.channelStats}>
-                  <Stat label="Подписчиков" value={ch.subscribers} />
-                  <Stat label="Постов в канале" value={ch.posts_count} />
-                  <Stat label="Ср. просмотры" value={ch.avg_views} />
-                  <Stat label="Ср. лайки" value={ch.avg_likes} />
-                </div>
+          <>
+            <div className={styles.filtersRow}>
+              <div className={styles.filterGroup}>
+                <span className={styles.sortLabel}>Канал A:</span>
+                <select
+                  className={styles.channelSelect}
+                  value={cmpA}
+                  onChange={e => setCmpA(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  {allChannels.map(c => (
+                    <option key={c.channel_id} value={c.channel_id}>
+                      {PLATFORM_LABELS[c.platform]} · {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))}
-          </div>
+              <div className={styles.filterGroup}>
+                <span className={styles.sortLabel}>Канал B:</span>
+                <select
+                  className={styles.channelSelect}
+                  value={cmpB}
+                  onChange={e => setCmpB(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <option value="">— не выбран —</option>
+                  {allChannels.filter(c => c.channel_id !== cmpA).map(c => (
+                    <option key={c.channel_id} value={c.channel_id}>
+                      {PLATFORM_LABELS[c.platform]} · {c.name}
+                    </option>
+                  ))}
+                </select>
+                {cmpB !== '' && (
+                  <button className={styles.clearBtn} onClick={() => setCmpB('')} title="Убрать второй канал">
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            <ChannelCompareTable a={cmpChannelA} b={cmpChannelB} />
+          </>
         )}
       </Section>
 
       {/* По нашим постам */}
       <Section title="По постам через сервис">
-        {!overview?.service_posts || overview.service_posts.length === 0 ? (
+        {allServicePosts.length === 0 ? (
           <p className={styles.empty}>За период не было опубликованных постов через сервис</p>
         ) : (
-          <div className={styles.channelGrid}>
-            {overview.service_posts.map(sp => (
-              <div key={sp.channel_id} className={styles.channelCard}>
-                <div className={styles.channelHead}>
-                  <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[sp.platform] }}>
-                    {PLATFORM_LABELS[sp.platform]}
-                  </span>
-                  <span className={styles.channelName}>{sp.name}</span>
-                </div>
-                <div className={styles.channelStats}>
-                  <Stat label="Постов" value={sp.posts_count} />
-                  <Stat label="Всего просмотров" value={sp.total_views} />
-                  <Stat label="Ср. просмотры" value={sp.avg_views} />
-                  <Stat label="Ср. лайки" value={sp.avg_likes} />
-                  <Stat label="Ср. комментарии" value={sp.avg_comments} />
-                </div>
+          <>
+            <div className={styles.filtersRow}>
+              <div className={styles.filterGroup}>
+                <span className={styles.sortLabel}>Канал:</span>
+                <select
+                  className={styles.channelSelect}
+                  value={serviceChannelId}
+                  onChange={e => setServiceChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                >
+                  <option value="all">Все каналы (сводно)</option>
+                  {allServicePosts.map(sp => (
+                    <option key={sp.channel_id} value={sp.channel_id}>
+                      {PLATFORM_LABELS[sp.platform]} · {sp.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))}
-          </div>
+            </div>
+            <ServicePostsTable items={filteredServicePosts} />
+          </>
         )}
       </Section>
 
       {/* График подписчиков */}
       <Section title="Динамика подписчиков">
-        {subSeries.every(s => s.points.length < 2) ? (
+        {subsValidSeries.length === 0 ? (
           <p className={styles.empty}>Нужно минимум 2 точки данных. Подожди пока соберётся (раз в час)</p>
         ) : (
-          <SubscribersChart series={subSeries} />
+          <>
+            <div className={styles.filtersRow}>
+              <div className={styles.filterGroup}>
+                <span className={styles.sortLabel}>Канал:</span>
+                <select
+                  className={styles.channelSelect}
+                  value={subsChannelId}
+                  onChange={e => setSubsChannelId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  {subsValidSeries.map(s => (
+                    <option key={s.channel_id} value={s.channel_id}>
+                      {PLATFORM_LABELS[s.platform]} · {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {subsSelected && <SubscribersChart series={[subsSelected]} />}
+          </>
         )}
       </Section>
 
@@ -248,6 +318,113 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div className={styles.stat}>
       <div className={styles.statValue}>{value.toLocaleString('ru')}</div>
       <div className={styles.statLabel}>{label}</div>
+    </div>
+  )
+}
+
+function ChannelCompareTable({ a, b }: { a?: any; b?: any }) {
+  if (!a) return null
+  const rows: { label: string; key: string }[] = [
+    { label: 'Подписчиков', key: 'subscribers' },
+    { label: 'Постов в канале', key: 'posts_count' },
+    { label: 'Ср. просмотры', key: 'avg_views' },
+    { label: 'Ср. лайки', key: 'avg_likes' },
+  ]
+
+  function diff(av: number, bv: number) {
+    if (!bv) return ''
+    const d = av - bv
+    if (d === 0) return '='
+    const pct = bv > 0 ? Math.round((d / bv) * 100) : 0
+    const sign = d > 0 ? '+' : ''
+    return `${sign}${d.toLocaleString('ru')} (${sign}${pct}%)`
+  }
+
+  return (
+    <div className={styles.cmpTable}>
+      <div className={styles.cmpHeader}>
+        <div />
+        <CmpChannelHead ch={a} />
+        {b && <CmpChannelHead ch={b} />}
+        {b && <div className={styles.cmpDiffHead}>A − B</div>}
+      </div>
+      {rows.map(r => {
+        const av = a[r.key] as number
+        const bv = b ? (b[r.key] as number) : 0
+        const diffStr = b ? diff(av, bv) : ''
+        const diffClass = !b ? '' : av > bv ? styles.diffPositive : av < bv ? styles.diffNegative : ''
+        return (
+          <div key={r.key} className={styles.cmpRow}>
+            <div className={styles.cmpLabel}>{r.label}</div>
+            <div className={styles.cmpValue}>{av.toLocaleString('ru')}</div>
+            {b && <div className={styles.cmpValue}>{bv.toLocaleString('ru')}</div>}
+            {b && <div className={`${styles.cmpDiff} ${diffClass}`}>{diffStr}</div>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CmpChannelHead({ ch }: { ch: any }) {
+  return (
+    <div className={styles.cmpHeadCell}>
+      <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[ch.platform] }}>
+        {PLATFORM_LABELS[ch.platform]}
+      </span>
+      <span className={styles.cmpChannelName}>{ch.name}</span>
+    </div>
+  )
+}
+
+function ServicePostsTable({ items }: { items: any[] }) {
+  if (items.length === 0) return <p className={styles.empty}>Нет данных</p>
+  // если один - показываем как карточку, если несколько - как компактную таблицу
+  if (items.length === 1) {
+    const sp = items[0]
+    return (
+      <div className={styles.singleChannelCard}>
+        <div className={styles.channelHead}>
+          <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[sp.platform] }}>
+            {PLATFORM_LABELS[sp.platform]}
+          </span>
+          <span className={styles.channelName}>{sp.name}</span>
+        </div>
+        <div className={styles.statsGrid}>
+          <Stat label="Постов" value={sp.posts_count} />
+          <Stat label="Всего просмотров" value={sp.total_views} />
+          <Stat label="Ср. просмотры" value={sp.avg_views} />
+          <Stat label="Ср. лайки" value={sp.avg_likes} />
+          <Stat label="Ср. комментарии" value={sp.avg_comments} />
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.servicePostsTable}>
+      <div className={styles.serviceHeader}>
+        <span>Канал</span>
+        <span className={styles.numCol}>Постов</span>
+        <span className={styles.numCol}>Всего просм.</span>
+        <span className={styles.numCol}>Ср. просм.</span>
+        <span className={styles.numCol}>Ср. лайки</span>
+        <span className={styles.numCol}>Ср. комм.</span>
+      </div>
+      {items.map(sp => (
+        <div key={sp.channel_id} className={styles.serviceRow}>
+          <div className={styles.serviceCell}>
+            <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[sp.platform] }}>
+              {PLATFORM_LABELS[sp.platform]}
+            </span>
+            <span>{sp.name}</span>
+          </div>
+          <div className={styles.numCol}>{sp.posts_count.toLocaleString('ru')}</div>
+          <div className={styles.numCol}>{sp.total_views.toLocaleString('ru')}</div>
+          <div className={styles.numCol}>{sp.avg_views.toLocaleString('ru')}</div>
+          <div className={styles.numCol}>{sp.avg_likes.toLocaleString('ru')}</div>
+          <div className={styles.numCol}>{sp.avg_comments.toLocaleString('ru')}</div>
+        </div>
+      ))}
     </div>
   )
 }

@@ -78,10 +78,144 @@
   color: #fff;
 }
 
+.clearBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clearBtn:hover { color: var(--text); border-color: var(--text2); }
+
+/* Сравнение каналов: таблица 2-х колонок (A / B / разница) */
+.cmpTable {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cmpHeader,
+.cmpRow {
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr 160px;
+  gap: 12px;
+  padding: 12px 16px;
+  align-items: center;
+}
+.cmpRow:nth-child(even) { background: rgba(255,255,255,0.02); }
+.cmpHeader {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+/* если только канал A - убираем колонки B и разницы */
+.cmpHeader:has(> :nth-child(2):last-child),
+.cmpRow:has(> :nth-child(2):last-child) {
+  grid-template-columns: 200px 1fr;
+}
+.cmpHeadCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.cmpChannelName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmpDiffHead {
+  font-size: var(--fs-xs);
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+.cmpLabel { color: var(--text2); font-size: var(--fs-sm); }
+.cmpValue {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cmpDiff {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Карточка для одного канала */
+.singleChannelCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+/* Таблица сводно по сервис-постам */
+.servicePostsTable {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.serviceHeader,
+.serviceRow {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1.3fr 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 12px 16px;
+  align-items: center;
+}
+.serviceHeader {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.serviceRow { font-size: var(--fs-sm); }
+.serviceRow:nth-child(even) { background: rgba(255,255,255,0.02); }
+.serviceCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .miniChartsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
+}
+/* если внутри один график - делаем его широким */
+.miniChartsGrid:has(> :first-child:last-child) {
+  grid-template-columns: 1fr;
+}
+.miniChartsGrid:has(> :first-child:last-child) .miniSvg {
+  height: 200px;
 }
 .miniChart {
   background: var(--bg3);
