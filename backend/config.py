@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # при пуше собранной статистики на /api/stats/tg/push.
     tg_collector_token: str = ""
 
+    # SOCKS5 прокси для исходящих запросов к api.telegram.org (нужен на РФ-сервере,
+    # где TG-API блочится РКН). Формат: socks5://127.0.0.1:1080. Пусто = прямое подключение.
+    tg_proxy_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

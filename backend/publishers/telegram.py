@@ -179,9 +179,24 @@ def _ranges_to_html(text: str, ranges: List[Dict]) -> str:
     return "".join(out).replace("\n", "<br>")
 
 
+def _httpx_kwargs(timeout: int = 30) -> Dict:
+    """Общие параметры httpx-клиента. Если в конфиге задан tg_proxy_url -
+    все запросы к TG идут через прокси (SOCKS5 на РФ-сервере)."""
+    kw: Dict = {"timeout": timeout}
+    proxy = settings.tg_proxy_url
+    if proxy:
+        if proxy.startswith("socks"):
+            # httpx сам по себе SOCKS не умеет - нужен httpx-socks транспорт
+            from httpx_socks import AsyncProxyTransport
+            kw["transport"] = AsyncProxyTransport.from_url(proxy)
+        else:
+            kw["proxy"] = proxy
+    return kw
+
+
 async def _tg_request(bot_token: str, method: str, data: Dict) -> Dict:
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(**_httpx_kwargs(30)) as client:
         resp = await client.post(url, json=data)
     return resp.json()
 
@@ -200,7 +215,7 @@ async def _tg_request_multipart(bot_token: str, method: str, data: Dict, files: 
     """Шлёт запрос с прикреплёнными файлами через multipart/form-data.
     Используется когда TG не может скачать картинку по URL (или мы не хотим светить URL)."""
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(**_httpx_kwargs(120)) as client:
         resp = await client.post(url, data=data, files=files)
     return resp.json()
 
@@ -350,7 +365,7 @@ async def test_tg_channel(config: Dict) -> Dict:
         return {"ok": False, "message": "bot_token не указан"}
 
     # verify token
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(**_httpx_kwargs(10)) as client:
         r = await client.get(f"https://api.telegram.org/bot{token}/getMe")
     data = r.json()
     if not data.get("ok"):
