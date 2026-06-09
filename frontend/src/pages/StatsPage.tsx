@@ -14,11 +14,33 @@ type SortBy = 'views' | 'likes' | 'reposts' | 'comments'
 export default function StatsPage() {
   const [period, setPeriod] = useState(30)
   const [sortBy, setSortBy] = useState<SortBy>('views')
+  const [topPlatform, setTopPlatform] = useState<'all' | 'tg' | 'vk'>('all')
+  const [topChannelId, setTopChannelId] = useState<number | 'all'>('all')
 
   const { data: overview } = useQuery({ queryKey: ['stats-overview', period], queryFn: () => getOverview(period) })
-  const { data: topPosts = [] } = useQuery({ queryKey: ['stats-top', period, sortBy], queryFn: () => getTopPosts({ period_days: period, sort_by: sortBy, limit: 15 }) })
+  const { data: topPosts = [] } = useQuery({
+    queryKey: ['stats-top', period, sortBy, topPlatform, topChannelId],
+    queryFn: () => getTopPosts({
+      period_days: period,
+      sort_by: sortBy,
+      limit: 30,
+      platform: topPlatform === 'all' ? undefined : topPlatform,
+      channel_id: topChannelId === 'all' ? undefined : topChannelId,
+    }),
+  })
   const { data: subSeries = [] } = useQuery({ queryKey: ['stats-subs', period], queryFn: () => getSubscribers(period) })
   const { data: bestTime = [] } = useQuery({ queryKey: ['stats-best', period], queryFn: () => getBestTime(period) })
+
+  // список каналов для фильтра в "Топ постов" - берём из overview
+  const allChannels = overview?.channels ?? []
+  const channelsForFilter = topPlatform === 'all'
+    ? allChannels
+    : allChannels.filter(c => c.platform === topPlatform)
+
+  // если выбранный канал не подходит под платформу - сбросим
+  if (topChannelId !== 'all' && !channelsForFilter.find(c => c.channel_id === topChannelId)) {
+    setTimeout(() => setTopChannelId('all'), 0)
+  }
 
   return (
     <div className={styles.page}>
@@ -104,6 +126,37 @@ export default function StatsPage() {
 
       {/* Топ постов */}
       <Section title="Топ постов">
+        <div className={styles.filtersRow}>
+          <div className={styles.filterGroup}>
+            <span className={styles.sortLabel}>Платформа:</span>
+            {(['all', 'tg', 'vk'] as const).map(p => (
+              <button
+                key={p}
+                className={`${styles.sortBtn} ${topPlatform === p ? styles.sortBtnActive : ''}`}
+                onClick={() => setTopPlatform(p)}
+              >
+                {p === 'all' ? 'Все' : PLATFORM_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {channelsForFilter.length > 0 && (
+            <div className={styles.filterGroup}>
+              <span className={styles.sortLabel}>Канал:</span>
+              <select
+                className={styles.channelSelect}
+                value={topChannelId}
+                onChange={e => setTopChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              >
+                <option value="all">Все каналы</option>
+                {channelsForFilter.map(c => (
+                  <option key={c.channel_id} value={c.channel_id}>
+                    {PLATFORM_LABELS[c.platform]} · {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <div className={styles.sortBar}>
           <span className={styles.sortLabel}>Сортировать по:</span>
           {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (

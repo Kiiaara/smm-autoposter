@@ -102,6 +102,29 @@ async def collect_tg_post_stats(target: PostTarget, db: Session):
     db.add(stats)
 
 
+async def fetch_channel_posts(channel: Channel, limit: int = 50, period_days: int = 30) -> list[dict]:
+    """Тянет последние посты канала из TGStat для отображения в топе.
+    Не пишет в БД - просто возвращает список словарей с метриками.
+    Возвращает: [{message_id, text, date, views, forwards, reactions_count, comments_count, link}, ...]
+    """
+    if not is_configured():
+        return []
+    username = _channel_username(channel)
+    if not username:
+        return []
+    from datetime import timedelta
+    end = int(datetime.now().timestamp())
+    start = int((datetime.now() - timedelta(days=period_days)).timestamp())
+    resp = await _tgstat_get("channels/posts", {
+        "channelId": f"@{username}",
+        "limit": limit,
+        "startTime": start,
+        "endTime": end,
+    })
+    items = (resp or {}).get("items") or []
+    return items
+
+
 async def collect_tg_channel_avg(channel: Channel, db: Session):
     """Подписчики + средние метрики канала через channels/get + channels/posts."""
     if not is_configured():

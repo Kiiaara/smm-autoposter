@@ -63,7 +63,7 @@ export interface BestTimeCell {
 export const getOverview = (period_days = 30) =>
   client.get<Overview>('/stats/overview', { params: { period_days } }).then(r => r.data)
 
-export const getTopPosts = (params: { period_days?: number; sort_by?: string; limit?: number; platform?: string } = {}) =>
+export const getTopPosts = (params: { period_days?: number; sort_by?: string; limit?: number; platform?: string; channel_id?: number } = {}) =>
   client.get<TopPost[]>('/stats/posts', { params }).then(r => r.data)
 
 export const getSubscribers = (period_days = 30) =>

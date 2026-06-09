@@ -172,45 +172,106 @@ def overview(period_days: int = 30, db: Session = Depends(get_db)):
 
 
 @router.get("/posts", response_model=List[TopPostItem])
-def top_posts(
+async def top_posts(
     period_days: int = 30,
     sort_by: str = Query("views", pattern="^(views|likes|reposts|comments)$"),
     limit: int = 20,
     platform: Optional[str] = None,
+    channel_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
-    since = datetime.now() - timedelta(days=period_days)
-    q = db.query(PostTarget).filter(
-        PostTarget.status == PostTargetStatus.published,
-        PostTarget.published_at >= since,
-    )
-    targets = q.all()
+    """Топ постов за период.
 
-    latest = _latest_stats_subquery(db)
+    Источники:
+    - VK: PostTarget'ы опубликованные через сервис (с PostStats из VK API).
+    - TG: посты канала тянем напрямую из TGStat - не только наши, а ВСЕ посты
+      канала. Так удобнее смотреть кто реально стрельнул.
+    """
+    since = datetime.now() - timedelta(days=period_days)
     items: List[TopPostItem] = []
 
-    for t in targets:
-        s = latest.get(t.id)
-        if not s or not t.channel:
-            continue
-        if platform and t.channel.platform.value != platform:
-            continue
-        post = t.post
-        if not post:
-            continue
-        items.append(TopPostItem(
-            post_id=post.id,
-            title=post.title,
-            preview=(post.text_plain or post.text_tg or "")[:120],
-            platform=t.channel.platform.value,
-            channel_name=t.channel.name,
-            published_at=t.published_at,
-            url=t.published_url,
-            views=s.views,
-            likes=s.likes,
-            reposts=s.reposts,
-            comments=s.comments,
-        ))
+    want_vk = platform in (None, "vk")
+    want_tg = platform in (None, "tg")
+
+    # VK: из БД, как и раньше
+    if want_vk:
+        q = db.query(PostTarget).filter(
+            PostTarget.status == PostTargetStatus.published,
+            PostTarget.published_at >= since,
+        )
+        targets = q.all()
+        latest = _latest_stats_subquery(db)
+        for t in targets:
+            if not t.channel or t.channel.platform != Platform.vk:
+                continue
+            if channel_id and t.channel_id != channel_id:
+                continue
+            s = latest.get(t.id)
+            if not s:
+                continue
+            post = t.post
+            if not post:
+                continue
+            items.append(TopPostItem(
+                post_id=post.id,
+                title=post.title,
+                preview=(post.text_plain or post.text_tg or "")[:120],
+                platform="vk",
+                channel_name=t.channel.name,
+                published_at=t.published_at,
+                url=t.published_url,
+                views=s.views,
+                likes=s.likes,
+                reposts=s.reposts,
+                comments=s.comments,
+            ))
+
+    # TG: тянем посты прямо из TGStat (все посты канала, не только наши)
+    if want_tg:
+        from services import tg_stats
+        if tg_stats.is_configured():
+            tg_channels = db.query(Channel).filter(
+                Channel.platform == Platform.tg,
+                Channel.is_active == True,
+            ).all()
+            if channel_id:
+                tg_channels = [c for c in tg_channels if c.id == channel_id]
+            for ch in tg_channels:
+                try:
+                    posts = await tg_stats.fetch_channel_posts(ch, limit=50, period_days=period_days)
+                except Exception:
+                    posts = []
+                username = (ch.config_json or {}).get("channel") or ""
+                # для построения ссылки на пост
+                uname = ""
+                if "t.me/" in username:
+                    uname = username.split("t.me/", 1)[1].strip("/").split("/")[0]
+                elif username.startswith("@"):
+                    uname = username[1:]
+                for p in posts:
+                    msg_id = p.get("id") or p.get("message_id")
+                    text = (p.get("text") or "")[:120]
+                    pub_ts = p.get("date") or p.get("created_at")
+                    if isinstance(pub_ts, (int, float)):
+                        pub_dt = datetime.fromtimestamp(pub_ts)
+                    else:
+                        continue
+                    if pub_dt < since:
+                        continue
+                    url = p.get("link") or (f"https://t.me/{uname}/{msg_id}" if uname and msg_id else None)
+                    items.append(TopPostItem(
+                        post_id=int(msg_id) if msg_id else 0,
+                        title=None,
+                        preview=text,
+                        platform="tg",
+                        channel_name=ch.name,
+                        published_at=pub_dt,
+                        url=url,
+                        views=int(p.get("views") or 0),
+                        likes=int(p.get("reactions_count") or 0),
+                        reposts=int(p.get("forwards") or 0),
+                        comments=int(p.get("comments_count") or 0),
+                    ))
 
     items.sort(key=lambda x: getattr(x, sort_by), reverse=True)
     return items[:limit]
