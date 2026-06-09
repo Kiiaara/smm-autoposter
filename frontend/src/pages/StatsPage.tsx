@@ -12,6 +12,13 @@ const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 type SortBy = 'views' | 'likes' | 'reposts' | 'comments'
 
+const SORT_LABELS: Record<SortBy, string> = {
+  views: 'Просмотры',
+  likes: 'Реакции',
+  reposts: 'Репосты',
+  comments: 'Комментарии',
+}
+
 export default function StatsPage() {
   const [period, setPeriod] = useState(30)
   const [sortBy, setSortBy] = useState<SortBy>('views')
@@ -230,60 +237,31 @@ export default function StatsPage() {
               </select>
             </div>
           )}
+          {topChannelId !== 'all' && (
+            <a
+              href={`/api/stats/posts/export.xlsx?channel_id=${topChannelId}&period_days=${period}`}
+              className={`btn btn-primary ${styles.exportBtn}`}
+              download
+            >
+              📥 Экспорт в Excel
+            </a>
+          )}
         </div>
-        <div className={styles.sortBar}>
-          <span className={styles.sortLabel}>Сортировать по:</span>
+        <div className={styles.sortTabs}>
           {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (
             <button
               key={s}
-              className={`${styles.sortBtn} ${sortBy === s ? styles.sortBtnActive : ''}`}
+              className={`${styles.sortTab} ${sortBy === s ? styles.sortTabActive : ''}`}
               onClick={() => setSortBy(s)}
             >
-              {s === 'views' && 'Просмотры'}
-              {s === 'likes' && 'Лайки'}
-              {s === 'reposts' && 'Репосты'}
-              {s === 'comments' && 'Комменты'}
+              {SORT_LABELS[s]}
             </button>
           ))}
         </div>
         {topPosts.length === 0 ? (
           <p className={styles.empty}>Нет данных за выбранный период</p>
         ) : (
-          <div className={styles.postsTable}>
-            <div className={styles.postsHeader}>
-              <span>Пост</span>
-              <span>Канал</span>
-              <span>Дата</span>
-              <span className={styles.numCol}>👁</span>
-              <span className={styles.numCol}>❤️</span>
-              <span className={styles.numCol}>↗️</span>
-              <span className={styles.numCol}>💬</span>
-            </div>
-            {topPosts.map(p => (
-              <div key={p.post_id + p.channel_name} className={styles.postRow}>
-                <div className={styles.postCell}>
-                  {p.url ? (
-                    <a href={p.url} target="_blank" rel="noopener" className={styles.postLink}>
-                      {p.title || p.preview || 'Без названия'}
-                    </a>
-                  ) : (
-                    <span>{p.title || p.preview || 'Без названия'}</span>
-                  )}
-                </div>
-                <div className={styles.postCell}>
-                  <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[p.platform] }}>
-                    {PLATFORM_LABELS[p.platform]}
-                  </span>
-                  {p.channel_name}
-                </div>
-                <div className={styles.postCell}>{format(parseISO(p.published_at), 'd MMM HH:mm', { locale: ru })}</div>
-                <div className={styles.numCol}>{p.views.toLocaleString('ru')}</div>
-                <div className={styles.numCol}>{p.likes.toLocaleString('ru')}</div>
-                <div className={styles.numCol}>{p.reposts.toLocaleString('ru')}</div>
-                <div className={styles.numCol}>{p.comments.toLocaleString('ru')}</div>
-              </div>
-            ))}
-          </div>
+          <PostsExplorer posts={topPosts} sortBy={sortBy} />
         )}
       </Section>
 
@@ -429,6 +407,101 @@ function ServicePostsTable({ items }: { items: any[] }) {
           <div className={styles.numCol}>{sp.avg_comments.toLocaleString('ru')}</div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function PostsExplorer({ posts, sortBy }: { posts: any[]; sortBy: SortBy }) {
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  // если posts поменялись (фильтр) - сбрасываем на 0
+  const safeIdx = selectedIdx >= posts.length ? 0 : selectedIdx
+  const selected = posts[safeIdx]
+
+  function metricValue(p: any) {
+    switch (sortBy) {
+      case 'views': return p.views
+      case 'likes': return p.likes
+      case 'reposts': return p.reposts
+      case 'comments': return p.comments
+    }
+  }
+  function metricIcon() {
+    switch (sortBy) {
+      case 'views': return '👁'
+      case 'likes': return '❤'
+      case 'reposts': return '↗'
+      case 'comments': return '💬'
+    }
+  }
+
+  // ссылка для iframe: https://t.me/{uname}/{msg_id}?embed=1&userpic=true&dark=1
+  function embedUrl(p: any): string | null {
+    if (!p?.url) return null
+    const m = p.url.match(/t\.me\/([^/]+)\/(\d+)/)
+    if (!m) return null
+    return `https://t.me/${m[1]}/${m[2]}?embed=1&userpic=true&dark=1`
+  }
+
+  const embed = embedUrl(selected)
+
+  return (
+    <div className={styles.postsExplorer}>
+      <div className={styles.postsList}>
+        {posts.map((p, i) => (
+          <button
+            key={`${p.post_id}-${p.channel_name}-${i}`}
+            className={`${styles.postListRow} ${i === safeIdx ? styles.postListRowActive : ''}`}
+            onClick={() => setSelectedIdx(i)}
+          >
+            <div className={styles.postListMain}>
+              <div className={styles.postListMeta}>
+                <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[p.platform] }}>
+                  {PLATFORM_LABELS[p.platform]}
+                </span>
+                <span className={styles.postListChannel}>{p.channel_name}</span>
+                <span className={styles.postListDate}>{format(parseISO(p.published_at), 'd MMM, HH:mm', { locale: ru })}</span>
+              </div>
+              <div className={styles.postListPreview}>
+                {p.preview || p.title || '(без текста)'}
+              </div>
+            </div>
+            <div className={styles.postListMetric}>
+              <span className={styles.postListMetricIcon}>{metricIcon()}</span>
+              <span className={styles.postListMetricValue}>{metricValue(p).toLocaleString('ru')}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+      <div className={styles.postsPreview}>
+        {embed ? (
+          <iframe
+            key={embed}
+            src={embed}
+            className={styles.postsPreviewIframe}
+            scrolling="no"
+            frameBorder={0}
+          />
+        ) : selected ? (
+          <div className={styles.postsPreviewFallback}>
+            <div className={styles.postsPreviewText}>{selected.preview || selected.title || '(нет текста)'}</div>
+            {selected.url && (
+              <a href={selected.url} target="_blank" rel="noopener" className="btn btn-secondary">
+                Открыть пост ↗
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className={styles.empty}>Выберите пост слева</div>
+        )}
+        {selected && (
+          <div className={styles.postsPreviewStats}>
+            <div><span>👁 Просмотры</span><b>{selected.views.toLocaleString('ru')}</b></div>
+            <div><span>❤ Реакции</span><b>{selected.likes.toLocaleString('ru')}</b></div>
+            <div><span>↗ Репосты</span><b>{selected.reposts.toLocaleString('ru')}</b></div>
+            <div><span>💬 Комментарии</span><b>{selected.comments.toLocaleString('ru')}</b></div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

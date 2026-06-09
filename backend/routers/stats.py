@@ -1,6 +1,9 @@
+import io
+import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from pydantic import BaseModel
@@ -313,9 +316,13 @@ async def top_posts(
                     uname = username.split("t.me/", 1)[1].strip("/").split("/")[0]
                 elif username.startswith("@"):
                     uname = username[1:]
+                import re as _re
+                def _strip_tags(s: str) -> str:
+                    s = _re.sub(r"<[^>]+>", "", s or "")
+                    return s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").strip()
                 for p in posts:
                     msg_id = p.get("id") or p.get("message_id")
-                    text = (p.get("text") or "")[:120]
+                    text = _strip_tags(p.get("text") or "")[:160]
                     pub_ts = p.get("date") or p.get("created_at")
                     if isinstance(pub_ts, (int, float)):
                         pub_dt = datetime.fromtimestamp(pub_ts)
@@ -412,3 +419,133 @@ def best_time(period_days: int = 60, db: Session = Depends(get_db)):
             posts=len(views_list),
         ))
     return result
+
+
+def _strip_html(s: str) -> str:
+    s = re.sub(r"<[^>]+>", "", s or "")
+    return s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").strip()
+
+
+@router.get("/posts/export.xlsx")
+async def export_posts_xlsx(
+    channel_id: int,
+    period_days: int = 30,
+    db: Session = Depends(get_db),
+):
+    """Экспорт всех постов канала за период в XLSX (для TG-каналов через TGStat).
+    Для VK - наши опубликованные через сервис посты + PostStats."""
+    ch = db.get(Channel, channel_id)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    since = datetime.now() - timedelta(days=period_days)
+
+    rows: List[dict] = []  # {date, text, views, forwards, reactions, comments, link}
+
+    if ch.platform == Platform.tg:
+        from services import tg_stats
+        if not tg_stats.is_configured():
+            raise HTTPException(400, "TGStat не настроен")
+        try:
+            posts = await tg_stats.fetch_channel_posts(ch, limit=200, period_days=period_days)
+        except Exception as e:
+            raise HTTPException(500, f"TGStat error: {e}")
+
+        # username для построения ссылки
+        username = (ch.config_json or {}).get("channel") or ""
+        uname = ""
+        if "t.me/" in username:
+            uname = username.split("t.me/", 1)[1].strip("/").split("/")[0]
+        elif username.startswith("@"):
+            uname = username[1:]
+
+        for p in posts:
+            msg_id = p.get("id") or p.get("message_id")
+            pub_ts = p.get("date") or p.get("created_at")
+            if not isinstance(pub_ts, (int, float)):
+                continue
+            pub_dt = datetime.fromtimestamp(pub_ts)
+            if pub_dt < since:
+                continue
+            raw_r = p.get("reactions") or p.get("reactions_count")
+            if isinstance(raw_r, dict):
+                reactions = sum(int(v or 0) for v in raw_r.values())
+            elif isinstance(raw_r, list):
+                reactions = sum(int((r.get("count") or 0) if isinstance(r, dict) else 0) for r in raw_r)
+            else:
+                reactions = int(raw_r or 0)
+            raw_c = p.get("comments") or p.get("comments_count")
+            if isinstance(raw_c, dict):
+                comments = int(raw_c.get("count") or 0)
+            else:
+                comments = int(raw_c or 0)
+            link = p.get("link") or (f"https://t.me/{uname}/{msg_id}" if uname and msg_id else "")
+            rows.append({
+                "date": pub_dt.strftime("%Y-%m-%d %H:%M"),
+                "text": _strip_html(p.get("text") or ""),
+                "views": int(p.get("views") or 0),
+                "forwards": int(p.get("forwards") or 0),
+                "reactions": reactions,
+                "comments": comments,
+                "link": link,
+            })
+
+    elif ch.platform == Platform.vk:
+        targets = db.query(PostTarget).filter(
+            PostTarget.status == PostTargetStatus.published,
+            PostTarget.published_at >= since,
+            PostTarget.channel_id == channel_id,
+        ).all()
+        latest = _latest_stats_subquery(db)
+        for t in targets:
+            s = latest.get(t.id)
+            if not s or not t.published_at:
+                continue
+            text = (t.post.text_plain or t.post.text_tg or "") if t.post else ""
+            rows.append({
+                "date": t.published_at.strftime("%Y-%m-%d %H:%M"),
+                "text": text,
+                "views": s.views,
+                "forwards": s.reposts,
+                "reactions": s.likes,
+                "comments": s.comments,
+                "link": t.published_url or "",
+            })
+    else:
+        raise HTTPException(400, "Экспорт пока поддерживается только для TG и VK")
+
+    rows.sort(key=lambda r: r["date"], reverse=True)
+
+    # формируем XLSX
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = ch.name[:30]
+    headers = ["Дата", "Текст", "Просмотры", "Пересылки", "Реакции", "Комментарии", "Ссылка"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="7B61FF")
+        cell.alignment = Alignment(horizontal="center")
+    for r in rows:
+        ws.append([r["date"], r["text"], r["views"], r["forwards"], r["reactions"], r["comments"], r["link"]])
+    # автоширина (приблизительно)
+    widths = [18, 70, 12, 12, 12, 14, 50]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + i)].width = w
+    # перенос текста для колонки "Текст"
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", ch.name)[:40]
+    filename = f"posts_{safe_name}_{period_days}d.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
