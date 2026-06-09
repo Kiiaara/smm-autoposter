@@ -27,6 +27,14 @@ def is_configured() -> bool:
     return bool(settings.telethon_api_id and settings.telethon_api_hash and settings.telethon_session_string)
 
 
+def _build_proxy():
+    """Если в .env задан SOCKS5 - возвращаем tuple для Telethon, иначе None."""
+    if settings.telethon_proxy_host and settings.telethon_proxy_port:
+        import socks
+        return (socks.SOCKS5, settings.telethon_proxy_host, settings.telethon_proxy_port)
+    return None
+
+
 async def _get_client() -> TelegramClient:
     """Возвращает (и при необходимости создаёт + коннектит) глобальный клиент."""
     global _client, _client_lock
@@ -39,6 +47,7 @@ async def _get_client() -> TelegramClient:
                 StringSession(settings.telethon_session_string),
                 settings.telethon_api_id,
                 settings.telethon_api_hash,
+                proxy=_build_proxy(),
             )
         if not _client.is_connected():
             await _client.connect()

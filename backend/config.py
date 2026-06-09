@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     telethon_api_id: int = 0
     telethon_api_hash: str = ""
     telethon_session_string: str = ""
+    # SOCKS5 прокси для Telethon (нужен на FirstVDS, где TG-DC заблокированы).
+    # Если пусто - Telethon коннектится напрямую.
+    telethon_proxy_host: str = ""
+    telethon_proxy_port: int = 0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
