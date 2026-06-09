@@ -1,4 +1,4 @@
-"""Одноразовый скрипт: получает session_string для Telethon.
+"""Одноразовый скрипт: получает session_string для Pyrogram.
 
 Запуск:
     cd /opt/smm-autoposter/backend
@@ -11,15 +11,13 @@ import asyncio
 import os
 import sys
 
-# подгружаем .env вручную если запускаем не через uvicorn
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 
-from telethon import TelegramClient, connection as tg_connection
-from telethon.sessions import StringSession
+from pyrogram import Client
 
 
 async def main():
@@ -29,29 +27,42 @@ async def main():
         print("Нужны API_ID и API_HASH (с my.telegram.org)")
         sys.exit(1)
 
-    print("\nВойди в TG-аккаунт (от него будет идти чтение статистики каналов).")
-    print("Телефон с плюсом и кодом страны, например +79991234567\n")
+    kwargs = {
+        "name": "login_tmp",
+        "api_id": int(api_id),
+        "api_hash": api_hash,
+        "in_memory": True,
+    }
 
-    # MTProxy / SOCKS5 если задан (для серверов где TG режется)
-    kwargs = {}
+    # MTProxy если задан
     mtp_host = os.environ.get("TELETHON_MTPROXY_HOST")
     mtp_port = os.environ.get("TELETHON_MTPROXY_PORT")
     mtp_secret = os.environ.get("TELETHON_MTPROXY_SECRET")
     if mtp_host and mtp_port and mtp_secret:
-        kwargs["connection"] = tg_connection.ConnectionTcpMTProxyRandomizedIntermediate
-        kwargs["proxy"] = (mtp_host, int(mtp_port), mtp_secret)
-        print(f"Использую MTProxy {mtp_host}:{mtp_port}\n")
+        kwargs["proxy"] = {
+            "scheme": "mtproxy",
+            "hostname": mtp_host,
+            "port": int(mtp_port),
+            "secret": mtp_secret,
+        }
+        print(f"\nИспользую MTProxy {mtp_host}:{mtp_port}\n")
     else:
         proxy_host = os.environ.get("TELETHON_PROXY_HOST")
         proxy_port = os.environ.get("TELETHON_PROXY_PORT")
         if proxy_host and proxy_port:
-            import socks
-            kwargs["proxy"] = (socks.SOCKS5, proxy_host, int(proxy_port))
-            print(f"Использую SOCKS5 {proxy_host}:{proxy_port}\n")
+            kwargs["proxy"] = {
+                "scheme": "socks5",
+                "hostname": proxy_host,
+                "port": int(proxy_port),
+            }
+            print(f"\nИспользую SOCKS5 {proxy_host}:{proxy_port}\n")
 
-    async with TelegramClient(StringSession(), int(api_id), api_hash, **kwargs) as client:
+    print("Войди в TG-аккаунт (от него будет идти чтение статистики каналов).")
+    print("Телефон с плюсом и кодом страны, например +79991234567\n")
+
+    async with Client(**kwargs) as client:
         me = await client.get_me()
-        session = client.session.save()
+        session = await client.export_session_string()
         print()
         print("=" * 60)
         print(f"Вошёл как: {me.first_name} (@{me.username or '-'}) id={me.id}")

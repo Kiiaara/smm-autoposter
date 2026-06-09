@@ -1,16 +1,17 @@
-"""Сбор статистики из TG-каналов через Telethon (MTProto, читаем как юзер).
+"""Сбор статистики из TG-каналов через Pyrogram (MTProto как юзер).
 
-Bot API не отдаёт views/reactions постов, поэтому идём через user-сессию.
-Один глобальный клиент с StringSession - переподключается при необходимости.
+Bot API не отдаёт views/reactions постов - идём через user-сессию.
+Pyrogram нормально работает с FakeTLS-секретами MTProxy (в отличие от Telethon 1.36).
+Хранит session как string (TELETHON_SESSION_STRING - оставлено имя env для обратной совместимости).
 """
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
 
+from pyrogram import Client
+from pyrogram.errors import RPCError
 from sqlalchemy.orm import Session
-from telethon import TelegramClient, connection as tg_connection
-from telethon.sessions import StringSession
-from telethon.tl.types import Channel as TLChannel, Message
 
 from config import settings
 from models.channel import Channel
@@ -19,55 +20,58 @@ from models.stats import ChannelSnapshot, PostStats
 
 log = logging.getLogger("tg_stats")
 
-_client: Optional[TelegramClient] = None
-_client_lock = None  # asyncio.Lock - создадим лениво
+_client: Optional[Client] = None
+_client_lock: Optional[asyncio.Lock] = None
 
 
 def is_configured() -> bool:
-    return bool(settings.telethon_api_id and settings.telethon_api_hash and settings.telethon_session_string)
+    return bool(
+        settings.telethon_api_id
+        and settings.telethon_api_hash
+        and settings.telethon_session_string
+    )
 
 
-def _build_client_kwargs():
-    """Возвращает kwargs для TelegramClient с настройками прокси.
-    Приоритет: MTProxy > SOCKS5 > прямое подключение."""
-    kwargs = {}
+def _build_client_kwargs() -> dict:
+    """Опции клиента: api_id/api_hash + опционально MTProxy."""
+    kwargs: dict = {
+        "name": "smm_tg_stats",
+        "api_id": settings.telethon_api_id,
+        "api_hash": settings.telethon_api_hash,
+        "session_string": settings.telethon_session_string,
+        "in_memory": True,
+        "no_updates": True,  # нам не нужны updates, только запросы
+    }
     if settings.telethon_mtproxy_host and settings.telethon_mtproxy_port and settings.telethon_mtproxy_secret:
-        kwargs["connection"] = tg_connection.ConnectionTcpMTProxyRandomizedIntermediate
-        kwargs["proxy"] = (
-            settings.telethon_mtproxy_host,
-            settings.telethon_mtproxy_port,
-            settings.telethon_mtproxy_secret,
-        )
+        kwargs["proxy"] = {
+            "scheme": "mtproxy",
+            "hostname": settings.telethon_mtproxy_host,
+            "port": settings.telethon_mtproxy_port,
+            "secret": settings.telethon_mtproxy_secret,
+        }
     elif settings.telethon_proxy_host and settings.telethon_proxy_port:
-        import socks
-        kwargs["proxy"] = (socks.SOCKS5, settings.telethon_proxy_host, settings.telethon_proxy_port)
+        kwargs["proxy"] = {
+            "scheme": "socks5",
+            "hostname": settings.telethon_proxy_host,
+            "port": settings.telethon_proxy_port,
+        }
     return kwargs
 
 
-async def _get_client() -> TelegramClient:
-    """Возвращает (и при необходимости создаёт + коннектит) глобальный клиент."""
+async def _get_client() -> Client:
     global _client, _client_lock
     if _client_lock is None:
-        import asyncio
         _client_lock = asyncio.Lock()
     async with _client_lock:
         if _client is None:
-            _client = TelegramClient(
-                StringSession(settings.telethon_session_string),
-                settings.telethon_api_id,
-                settings.telethon_api_hash,
-                **_build_client_kwargs(),
-            )
-        if not _client.is_connected():
-            await _client.connect()
-        if not await _client.is_user_authorized():
-            log.error("Telethon session не авторизована - пересоздай session_string")
-            raise RuntimeError("Telethon not authorized")
+            _client = Client(**_build_client_kwargs())
+        if not _client.is_connected:
+            await _client.start()
     return _client
 
 
-def _chat_to_entity_arg(chat_id: str):
-    """chat_id в БД может быть '@username', '-100123', '123' - всё это понимает Telethon."""
+def _chat_id_arg(chat_id: str):
+    """Pyrogram принимает '@username', int (для каналов -100...), или просто число."""
     chat_id = chat_id.strip()
     if chat_id.startswith("@"):
         return chat_id
@@ -78,8 +82,7 @@ def _chat_to_entity_arg(chat_id: str):
 
 
 async def collect_tg_post_stats(target: PostTarget, db: Session):
-    """Тянет views/forwards/reactions/comments_count для конкретного TG-поста.
-    target.published_message_id - id сообщения в канале."""
+    """Тянет views/forwards/reactions для конкретного TG-поста."""
     if not is_configured():
         return
     ch = target.channel
@@ -90,35 +93,32 @@ async def collect_tg_post_stats(target: PostTarget, db: Session):
 
     try:
         client = await _get_client()
-        entity = await client.get_entity(_chat_to_entity_arg(chat_id))
         msg_id = int(target.published_message_id)
-        msgs = await client.get_messages(entity, ids=[msg_id])
-        if not msgs or msgs[0] is None:
+        msg = await client.get_messages(_chat_id_arg(chat_id), msg_id)
+        if not msg:
             return
-        m: Message = msgs[0]
 
-        # реакции суммарно
         reactions_total = 0
-        if m.reactions and m.reactions.results:
-            reactions_total = sum(r.count for r in m.reactions.results)
+        if msg.reactions and msg.reactions.reactions:
+            reactions_total = sum(r.count for r in msg.reactions.reactions)
 
-        # комментарии - replies.replies (если discussion group привязана)
-        comments = 0
-        if m.replies:
-            comments = m.replies.replies or 0
+        # комменты - replies.replies если discussion group привязана
+        comments = msg.replies.replies if msg.replies else 0
 
         stats = PostStats(
             post_target_id=target.id,
             captured_at=datetime.now(),
-            views=m.views or 0,
+            views=msg.views or 0,
             likes=reactions_total,
-            reposts=m.forwards or 0,
+            reposts=msg.forwards or 0,
             comments=comments,
             reactions=reactions_total,
         )
         db.add(stats)
-    except Exception as e:
+    except RPCError as e:
         log.warning(f"TG post stats failed for target {target.id}: {e}")
+    except Exception as e:
+        log.warning(f"TG post stats error for target {target.id}: {e}")
 
 
 async def collect_tg_channel_avg(channel: Channel, db: Session):
@@ -132,33 +132,27 @@ async def collect_tg_channel_avg(channel: Channel, db: Session):
 
     try:
         client = await _get_client()
-        entity = await client.get_entity(_chat_to_entity_arg(chat_id))
+        entity = await client.get_chat(_chat_id_arg(chat_id))
+        subscribers = entity.members_count or 0
 
-        # участники
-        subscribers = 0
-        try:
-            from telethon.tl.functions.channels import GetFullChannelRequest
-            full = await client(GetFullChannelRequest(entity))
-            subscribers = full.full_chat.participants_count or 0
-        except Exception as e:
-            log.warning(f"GetFullChannel failed for {channel.name}: {e}")
-
-        # средние по последним 100 постам
+        # последние 100 постов
         avg_views = avg_likes = avg_reposts = avg_comments = 0
         posts_total = 0
         try:
-            msgs = await client.get_messages(entity, limit=100)
-            real_posts = [m for m in msgs if m and (m.message or m.media)]
-            posts_total = len(real_posts)
+            msgs = []
+            async for m in client.get_chat_history(_chat_id_arg(chat_id), limit=100):
+                if m and (m.text or m.caption or m.media):
+                    msgs.append(m)
+            posts_total = len(msgs)
             if posts_total > 0:
-                views_sum = sum((m.views or 0) for m in real_posts)
-                reposts_sum = sum((m.forwards or 0) for m in real_posts)
+                views_sum = sum((m.views or 0) for m in msgs)
+                reposts_sum = sum((m.forwards or 0) for m in msgs)
                 likes_sum = sum(
-                    sum(r.count for r in m.reactions.results)
-                    if (m.reactions and m.reactions.results) else 0
-                    for m in real_posts
+                    sum(r.count for r in m.reactions.reactions)
+                    if (m.reactions and m.reactions.reactions) else 0
+                    for m in msgs
                 )
-                comments_sum = sum((m.replies.replies if m.replies else 0) for m in real_posts)
+                comments_sum = sum((m.replies.replies if m.replies else 0) for m in msgs)
                 avg_views = views_sum // posts_total
                 avg_likes = likes_sum // posts_total
                 avg_reposts = reposts_sum // posts_total
@@ -177,5 +171,7 @@ async def collect_tg_channel_avg(channel: Channel, db: Session):
             posts_total=posts_total,
         )
         db.add(snap)
+    except RPCError as e:
+        log.warning(f"TG snapshot failed for {channel.name}: {e}")
     except Exception as e:
-        log.warning(f"TG channel snapshot failed for {channel.name}: {e}")
+        log.warning(f"TG snapshot error for {channel.name}: {e}")
