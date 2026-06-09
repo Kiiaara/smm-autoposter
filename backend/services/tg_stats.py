@@ -1,16 +1,17 @@
-"""Сбор статистики из TG-каналов через Pyrogram (MTProto как юзер).
+"""Сбор статистики из TG-каналов через TGStat API (api.tgstat.ru).
 
-Bot API не отдаёт views/reactions постов - идём через user-сессию.
-Pyrogram нормально работает с FakeTLS-секретами MTProxy (в отличие от Telethon 1.36).
-Хранит session как string (TELETHON_SESSION_STRING - оставлено имя env для обратной совместимости).
+Бесплатный тариф: 2 канала на токен, ~500 запросов/день. Метрики не realtime
+(обновляются у TGStat раз в несколько часов), но достаточны для топ-постов и
+динамики подписчиков.
+
+Каналы привязываются к TGStat по @username, который кладётся в Channel.config_json:
+  config_json["username"] = "travociv"  (без @)
 """
-import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
 
-from pyrogram import Client
-from pyrogram.errors import RPCError
+import httpx
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -20,158 +21,125 @@ from models.stats import ChannelSnapshot, PostStats
 
 log = logging.getLogger("tg_stats")
 
-_client: Optional[Client] = None
-_client_lock: Optional[asyncio.Lock] = None
+TGSTAT_API = "https://api.tgstat.ru"
+TIMEOUT = 15
 
 
 def is_configured() -> bool:
-    return bool(
-        settings.telethon_api_id
-        and settings.telethon_api_hash
-        and settings.telethon_session_string
-    )
+    return bool(settings.tgstat_token)
 
 
-def _build_client_kwargs() -> dict:
-    """Опции клиента: api_id/api_hash + опционально MTProxy."""
-    kwargs: dict = {
-        "name": "smm_tg_stats",
-        "api_id": settings.telethon_api_id,
-        "api_hash": settings.telethon_api_hash,
-        "session_string": settings.telethon_session_string,
-        "in_memory": True,
-        "no_updates": True,  # нам не нужны updates, только запросы
-    }
-    if settings.telethon_mtproxy_host and settings.telethon_mtproxy_port and settings.telethon_mtproxy_secret:
-        kwargs["proxy"] = {
-            "scheme": "mtproxy",
-            "hostname": settings.telethon_mtproxy_host,
-            "port": settings.telethon_mtproxy_port,
-            "secret": settings.telethon_mtproxy_secret,
-        }
-    elif settings.telethon_proxy_host and settings.telethon_proxy_port:
-        kwargs["proxy"] = {
-            "scheme": "socks5",
-            "hostname": settings.telethon_proxy_host,
-            "port": settings.telethon_proxy_port,
-        }
-    return kwargs
+def _channel_username(ch: Channel) -> Optional[str]:
+    """Из config_json вытаскиваем username канала для TGStat (без @).
+    Источник: поле 'channel' (например '@travociv' или 'https://t.me/travociv'),
+    либо явное 'username'/'tgstat_username'."""
+    cfg = ch.config_json or {}
+    raw = (
+        cfg.get("username")
+        or cfg.get("tgstat_username")
+        or cfg.get("channel")
+        or ""
+    ).strip()
+    if not raw:
+        return None
+    # https://t.me/xxx
+    if "t.me/" in raw:
+        raw = raw.split("t.me/", 1)[1]
+    # https://telegram.me/xxx
+    if "telegram.me/" in raw:
+        raw = raw.split("telegram.me/", 1)[1]
+    # @username
+    username = raw.lstrip("@").strip("/").split("/")[0]
+    # отсекаем приватные ссылки (joinchat, +HASH) - они не публичные, TGStat не сможет
+    if username.startswith("+") or username.startswith("joinchat"):
+        return None
+    return username or None
 
 
-async def _get_client() -> Client:
-    global _client, _client_lock
-    if _client_lock is None:
-        _client_lock = asyncio.Lock()
-    async with _client_lock:
-        if _client is None:
-            _client = Client(**_build_client_kwargs())
-        if not _client.is_connected:
-            await _client.start()
-    return _client
-
-
-def _chat_id_arg(chat_id: str):
-    """Pyrogram принимает '@username', int (для каналов -100...), или просто число."""
-    chat_id = chat_id.strip()
-    if chat_id.startswith("@"):
-        return chat_id
+async def _tgstat_get(path: str, params: dict) -> Optional[dict]:
+    """GET к TGStat API. Возвращает payload или None при ошибке."""
+    params = {**params, "token": settings.tgstat_token}
+    url = f"{TGSTAT_API}/{path.lstrip('/')}"
     try:
-        return int(chat_id)
-    except ValueError:
-        return chat_id
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(url, params=params)
+        data = r.json()
+    except Exception as e:
+        log.warning(f"TGStat {path} request failed: {e}")
+        return None
+    if data.get("status") != "ok":
+        log.warning(f"TGStat {path} error: {data.get('error') or data}")
+        return None
+    return data.get("response")
 
 
 async def collect_tg_post_stats(target: PostTarget, db: Session):
-    """Тянет views/forwards/reactions для конкретного TG-поста."""
+    """Тянет метрики конкретного поста через posts/get.
+    postId = '@username/message_id', например 'travociv/12345'.
+    """
     if not is_configured():
         return
     ch = target.channel
-    cfg = ch.config_json or {}
-    chat_id = cfg.get("chat_id", "")
-    if not chat_id or not target.published_message_id:
+    username = _channel_username(ch)
+    if not username or not target.published_message_id:
         return
 
-    try:
-        client = await _get_client()
-        msg_id = int(target.published_message_id)
-        msg = await client.get_messages(_chat_id_arg(chat_id), msg_id)
-        if not msg:
-            return
+    post_id = f"@{username}/{target.published_message_id}"
+    resp = await _tgstat_get("posts/get", {"postId": post_id})
+    if not resp:
+        return
 
-        reactions_total = 0
-        if msg.reactions and msg.reactions.reactions:
-            reactions_total = sum(r.count for r in msg.reactions.reactions)
-
-        # комменты - replies.replies если discussion group привязана
-        comments = msg.replies.replies if msg.replies else 0
-
-        stats = PostStats(
-            post_target_id=target.id,
-            captured_at=datetime.now(),
-            views=msg.views or 0,
-            likes=reactions_total,
-            reposts=msg.forwards or 0,
-            comments=comments,
-            reactions=reactions_total,
-        )
-        db.add(stats)
-    except RPCError as e:
-        log.warning(f"TG post stats failed for target {target.id}: {e}")
-    except Exception as e:
-        log.warning(f"TG post stats error for target {target.id}: {e}")
+    # TGStat возвращает: views, forwards, reactions_count
+    stats = PostStats(
+        post_target_id=target.id,
+        captured_at=datetime.now(),
+        views=int(resp.get("views") or 0),
+        likes=int(resp.get("reactions_count") or 0),
+        reposts=int(resp.get("forwards") or 0),
+        comments=int(resp.get("comments_count") or 0),
+        reactions=int(resp.get("reactions_count") or 0),
+    )
+    db.add(stats)
 
 
 async def collect_tg_channel_avg(channel: Channel, db: Session):
-    """Подписчики + средние метрики по последним 100 постам канала."""
+    """Подписчики + средние метрики канала через channels/get + channels/posts."""
     if not is_configured():
         return
-    cfg = channel.config_json or {}
-    chat_id = cfg.get("chat_id", "")
-    if not chat_id:
+    username = _channel_username(channel)
+    if not username:
         return
 
-    try:
-        client = await _get_client()
-        entity = await client.get_chat(_chat_id_arg(chat_id))
-        subscribers = entity.members_count or 0
+    # 1) инфа о канале (подписчики)
+    info = await _tgstat_get("channels/get", {"channelId": f"@{username}"})
+    if not info:
+        return
+    subscribers = int(info.get("participants_count") or 0)
 
-        # последние 100 постов
-        avg_views = avg_likes = avg_reposts = avg_comments = 0
-        posts_total = 0
-        try:
-            msgs = []
-            async for m in client.get_chat_history(_chat_id_arg(chat_id), limit=100):
-                if m and (m.text or m.caption or m.media):
-                    msgs.append(m)
-            posts_total = len(msgs)
-            if posts_total > 0:
-                views_sum = sum((m.views or 0) for m in msgs)
-                reposts_sum = sum((m.forwards or 0) for m in msgs)
-                likes_sum = sum(
-                    sum(r.count for r in m.reactions.reactions)
-                    if (m.reactions and m.reactions.reactions) else 0
-                    for m in msgs
-                )
-                comments_sum = sum((m.replies.replies if m.replies else 0) for m in msgs)
-                avg_views = views_sum // posts_total
-                avg_likes = likes_sum // posts_total
-                avg_reposts = reposts_sum // posts_total
-                avg_comments = comments_sum // posts_total
-        except Exception as e:
-            log.warning(f"TG messages fetch failed for {channel.name}: {e}")
+    # 2) последние 50 постов канала - считаем средние
+    posts_resp = await _tgstat_get("channels/posts", {"channelId": f"@{username}", "limit": 50})
+    items = (posts_resp or {}).get("items") or []
+    posts_total = len(items)
 
-        snap = ChannelSnapshot(
-            channel_id=channel.id,
-            captured_at=datetime.now(),
-            subscribers=subscribers,
-            avg_views=avg_views,
-            avg_likes=avg_likes,
-            avg_reposts=avg_reposts,
-            avg_comments=avg_comments,
-            posts_total=posts_total,
-        )
-        db.add(snap)
-    except RPCError as e:
-        log.warning(f"TG snapshot failed for {channel.name}: {e}")
-    except Exception as e:
-        log.warning(f"TG snapshot error for {channel.name}: {e}")
+    avg_views = avg_likes = avg_reposts = avg_comments = 0
+    if posts_total > 0:
+        views_sum = sum(int(p.get("views") or 0) for p in items)
+        likes_sum = sum(int(p.get("reactions_count") or 0) for p in items)
+        reposts_sum = sum(int(p.get("forwards") or 0) for p in items)
+        comments_sum = sum(int(p.get("comments_count") or 0) for p in items)
+        avg_views = views_sum // posts_total
+        avg_likes = likes_sum // posts_total
+        avg_reposts = reposts_sum // posts_total
+        avg_comments = comments_sum // posts_total
+
+    snap = ChannelSnapshot(
+        channel_id=channel.id,
+        captured_at=datetime.now(),
+        subscribers=subscribers,
+        avg_views=avg_views,
+        avg_likes=avg_likes,
+        avg_reposts=avg_reposts,
+        avg_comments=avg_comments,
+        posts_total=posts_total,
+    )
+    db.add(snap)

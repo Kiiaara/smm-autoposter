@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     telethon_mtproxy_port: int = 0
     telethon_mtproxy_secret: str = ""
 
+    # TGStat API (api.tgstat.ru) - для сбора статистики TG-каналов через REST.
+    # Бесплатный тариф: 2 канала, ~500 запросов/день.
+    tgstat_token: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
