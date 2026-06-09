@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, DateTime, ForeignKey, Index, String, Text, BigInteger, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -38,5 +38,31 @@ class ChannelSnapshot(Base):
     channel = relationship("Channel")
 
 
+class ChannelPost(Base):
+    """Один пост из TG-канала со снимком метрик. Загружается локальным коллектором
+    через Telethon. Один пост = одна строка (latest-снимок), обновляется при ре-сборе.
+    """
+    __tablename__ = "channel_posts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(Integer, ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=False)
+    text = Column(Text, default="")  # первые ~500 символов текста поста
+    published_at = Column(DateTime, nullable=False, index=True)
+    views = Column(Integer, default=0)
+    forwards = Column(Integer, default=0)
+    reactions = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    link = Column(String(512), default="")  # https://t.me/username/12345
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
+
+    channel = relationship("Channel")
+
+    __table_args__ = (
+        UniqueConstraint("channel_id", "message_id", name="uq_channel_post"),
+    )
+
+
 Index("ix_post_stats_target_time", PostStats.post_target_id, PostStats.captured_at)
 Index("ix_channel_snap_chan_time", ChannelSnapshot.channel_id, ChannelSnapshot.captured_at)
+Index("ix_channel_post_chan_pub", ChannelPost.channel_id, ChannelPost.published_at)

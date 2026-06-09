@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # Бесплатный тариф: 2 канала, ~500 запросов/день.
     tgstat_token: str = ""
 
+    # Токен для локального tg-коллектора - им скрипт на компе авторизуется
+    # при пуше собранной статистики на /api/stats/tg/push.
+    tg_collector_token: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

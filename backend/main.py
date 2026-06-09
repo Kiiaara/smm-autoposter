@@ -54,6 +54,8 @@ PUBLIC_PATHS = {
     "/api/auth/telegram", "/api/auth/me", "/api/auth/logout", "/api/auth/config",
     "/api/auth/bot/start", "/api/auth/bot/check",
     "/api/auth/email/request", "/api/auth/email/verify",
+    # TG-коллектор - авторизуется своим токеном в заголовке
+    "/api/stats/tg/sync/channels", "/api/stats/tg/sync/push",
 }
 PUBLIC_PREFIXES = ("/api/auth/bot/webhook/",)
 

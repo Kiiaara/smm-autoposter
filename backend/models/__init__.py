@@ -2,7 +2,7 @@ from .post import Post, PostTarget, PostStatus, PostTargetStatus
 from .channel import Channel, Platform
 from .schedule_slot import ScheduleSlot
 from .reminder import Reminder
-from .stats import PostStats, ChannelSnapshot
+from .stats import PostStats, ChannelSnapshot, ChannelPost
 from .auth_session import AuthSession
 from .allowed_user import AllowedUser
 from .login_request import LoginRequest
@@ -13,7 +13,7 @@ __all__ = [
     "Channel", "Platform",
     "ScheduleSlot",
     "Reminder",
-    "PostStats", "ChannelSnapshot",
+    "PostStats", "ChannelSnapshot", "ChannelPost",
     "AuthSession",
     "AllowedUser",
     "LoginRequest",

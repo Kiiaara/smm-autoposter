@@ -2,15 +2,17 @@ import io
 import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from pydantic import BaseModel
+
+from config import settings
 from database import get_db
 from models.post import Post, PostTarget, PostTargetStatus
 from models.channel import Channel, Platform
-from models.stats import PostStats, ChannelSnapshot
+from models.stats import PostStats, ChannelSnapshot, ChannelPost
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -294,70 +296,31 @@ async def top_posts(
                 comments=s.comments,
             ))
 
-    # TG: тянем посты прямо из TGStat (все посты канала, не только наши)
+    # TG: посты канала из ChannelPost (заливает локальный коллектор через Telethon)
     if want_tg:
-        from services import tg_stats
-        if tg_stats.is_configured():
-            tg_channels = db.query(Channel).filter(
-                Channel.platform == Platform.tg,
-                Channel.is_active == True,
-            ).all()
-            if channel_id:
-                tg_channels = [c for c in tg_channels if c.id == channel_id]
-            for ch in tg_channels:
-                try:
-                    posts = await tg_stats.fetch_channel_posts(ch, limit=50, period_days=period_days)
-                except Exception:
-                    posts = []
-                username = (ch.config_json or {}).get("channel") or ""
-                # для построения ссылки на пост
-                uname = ""
-                if "t.me/" in username:
-                    uname = username.split("t.me/", 1)[1].strip("/").split("/")[0]
-                elif username.startswith("@"):
-                    uname = username[1:]
-                import re as _re
-                def _strip_tags(s: str) -> str:
-                    s = _re.sub(r"<[^>]+>", "", s or "")
-                    return s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").strip()
-                for p in posts:
-                    msg_id = p.get("id") or p.get("message_id")
-                    text = _strip_tags(p.get("text") or "")[:160]
-                    pub_ts = p.get("date") or p.get("created_at")
-                    if isinstance(pub_ts, (int, float)):
-                        pub_dt = datetime.fromtimestamp(pub_ts)
-                    else:
-                        continue
-                    if pub_dt < since:
-                        continue
-                    url = p.get("link") or (f"https://t.me/{uname}/{msg_id}" if uname and msg_id else None)
-                    # TGStat может вернуть reactions как число, как объект {emoji: count}, или вообще nil
-                    raw_reactions = p.get("reactions") or p.get("reactions_count")
-                    if isinstance(raw_reactions, dict):
-                        likes_count = sum(int(v or 0) for v in raw_reactions.values())
-                    elif isinstance(raw_reactions, list):
-                        likes_count = sum(int((r.get("count") or 0) if isinstance(r, dict) else 0) for r in raw_reactions)
-                    else:
-                        likes_count = int(raw_reactions or 0)
-                    # комменты - может быть число или объект с .count
-                    raw_comments = p.get("comments") or p.get("comments_count")
-                    if isinstance(raw_comments, dict):
-                        comments_count = int(raw_comments.get("count") or 0)
-                    else:
-                        comments_count = int(raw_comments or 0)
-                    items.append(TopPostItem(
-                        post_id=int(msg_id) if msg_id else 0,
-                        title=None,
-                        preview=text,
-                        platform="tg",
-                        channel_name=ch.name,
-                        published_at=pub_dt,
-                        url=url,
-                        views=int(p.get("views") or 0),
-                        likes=likes_count,
-                        reposts=int(p.get("forwards") or 0),
-                        comments=comments_count,
-                    ))
+        tg_q = db.query(ChannelPost).join(Channel).filter(
+            Channel.platform == Platform.tg,
+            ChannelPost.published_at >= since,
+        )
+        if channel_id:
+            tg_q = tg_q.filter(ChannelPost.channel_id == channel_id)
+        for cp in tg_q.all():
+            ch = cp.channel
+            if not ch:
+                continue
+            items.append(TopPostItem(
+                post_id=int(cp.message_id),
+                title=None,
+                preview=(cp.text or "")[:160],
+                platform="tg",
+                channel_name=ch.name,
+                published_at=cp.published_at,
+                url=cp.link or None,
+                views=cp.views or 0,
+                likes=cp.reactions or 0,
+                reposts=cp.forwards or 0,
+                comments=cp.comments or 0,
+            ))
 
     items.sort(key=lambda x: getattr(x, sort_by), reverse=True)
     return items[:limit]
@@ -549,3 +512,138 @@ async def export_posts_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Локальный TG-коллектор (Telethon на компе юзера) ──────
+# Юзер запускает локальный скрипт раз в неделю, он:
+# 1. GET /api/stats/tg/sync/channels - забирает список своих TG-каналов
+# 2. Через Telethon тянет посты каждого канала за период
+# 3. POST /api/stats/tg/sync/push - пушит метрики обратно
+# Авторизация - заголовок X-Collector-Token (значение из settings.tg_collector_token).
+
+def _require_collector_token(x_collector_token: Optional[str]):
+    if not settings.tg_collector_token:
+        raise HTTPException(500, "TG collector token не настроен на сервере")
+    if x_collector_token != settings.tg_collector_token:
+        raise HTTPException(403, "Bad token")
+
+
+class SyncChannel(BaseModel):
+    channel_id: int
+    name: str
+    username: str  # без @
+
+
+class SyncChannelsResponse(BaseModel):
+    channels: List[SyncChannel]
+
+
+@router.get("/tg/sync/channels", response_model=SyncChannelsResponse)
+def tg_sync_channels(
+    x_collector_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Локальный коллектор зовёт этот endpoint, получает список TG-каналов
+    для которых надо собрать стату."""
+    _require_collector_token(x_collector_token)
+    channels = db.query(Channel).filter(
+        Channel.platform == Platform.tg,
+        Channel.is_active == True,
+    ).all()
+    result: List[SyncChannel] = []
+    for ch in channels:
+        raw = (ch.config_json or {}).get("channel") or ""
+        username = raw
+        if "t.me/" in username:
+            username = username.split("t.me/", 1)[1]
+        username = username.lstrip("@").strip("/").split("/")[0]
+        if not username or username.startswith("+") or username.startswith("joinchat"):
+            continue
+        result.append(SyncChannel(channel_id=ch.id, name=ch.name, username=username))
+    return SyncChannelsResponse(channels=result)
+
+
+class SyncPostIn(BaseModel):
+    message_id: int
+    published_at: datetime
+    text: str = ""
+    views: int = 0
+    forwards: int = 0
+    reactions: int = 0
+    comments: int = 0
+    link: str = ""
+
+
+class SyncPushIn(BaseModel):
+    channel_id: int
+    subscribers: int = 0
+    posts: List[SyncPostIn]
+
+
+@router.post("/tg/sync/push")
+def tg_sync_push(
+    data: SyncPushIn,
+    x_collector_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Принимает посты + метрики от локального коллектора, пишет в БД (upsert по message_id).
+    Также создаёт ChannelSnapshot с подписчиками и агрегатами."""
+    _require_collector_token(x_collector_token)
+    ch = db.get(Channel, data.channel_id)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    if ch.platform != Platform.tg:
+        raise HTTPException(400, "Channel is not TG")
+
+    # upsert постов
+    posts_upserted = 0
+    for p in data.posts:
+        existing = db.query(ChannelPost).filter(
+            ChannelPost.channel_id == ch.id,
+            ChannelPost.message_id == p.message_id,
+        ).first()
+        if existing:
+            existing.text = (p.text or "")[:1000]
+            existing.published_at = p.published_at
+            existing.views = p.views
+            existing.forwards = p.forwards
+            existing.reactions = p.reactions
+            existing.comments = p.comments
+            existing.link = p.link
+            existing.updated_at = datetime.now()
+        else:
+            db.add(ChannelPost(
+                channel_id=ch.id,
+                message_id=p.message_id,
+                text=(p.text or "")[:1000],
+                published_at=p.published_at,
+                views=p.views,
+                forwards=p.forwards,
+                reactions=p.reactions,
+                comments=p.comments,
+                link=p.link,
+                updated_at=datetime.now(),
+            ))
+        posts_upserted += 1
+
+    # снапшот канала с агрегатами
+    if data.posts:
+        avg_views = sum(p.views for p in data.posts) // max(len(data.posts), 1)
+        avg_likes = sum(p.reactions for p in data.posts) // max(len(data.posts), 1)
+        avg_reposts = sum(p.forwards for p in data.posts) // max(len(data.posts), 1)
+        avg_comments = sum(p.comments for p in data.posts) // max(len(data.posts), 1)
+    else:
+        avg_views = avg_likes = avg_reposts = avg_comments = 0
+
+    db.add(ChannelSnapshot(
+        channel_id=ch.id,
+        captured_at=datetime.now(),
+        subscribers=data.subscribers,
+        avg_views=avg_views,
+        avg_likes=avg_likes,
+        avg_reposts=avg_reposts,
+        avg_comments=avg_comments,
+        posts_total=len(data.posts),
+    ))
+    db.commit()
+    return {"ok": True, "posts_upserted": posts_upserted}
