@@ -259,6 +259,20 @@ async def top_posts(
                     if pub_dt < since:
                         continue
                     url = p.get("link") or (f"https://t.me/{uname}/{msg_id}" if uname and msg_id else None)
+                    # TGStat может вернуть reactions как число, как объект {emoji: count}, или вообще nil
+                    raw_reactions = p.get("reactions") or p.get("reactions_count")
+                    if isinstance(raw_reactions, dict):
+                        likes_count = sum(int(v or 0) for v in raw_reactions.values())
+                    elif isinstance(raw_reactions, list):
+                        likes_count = sum(int((r.get("count") or 0) if isinstance(r, dict) else 0) for r in raw_reactions)
+                    else:
+                        likes_count = int(raw_reactions or 0)
+                    # комменты - может быть число или объект с .count
+                    raw_comments = p.get("comments") or p.get("comments_count")
+                    if isinstance(raw_comments, dict):
+                        comments_count = int(raw_comments.get("count") or 0)
+                    else:
+                        comments_count = int(raw_comments or 0)
                     items.append(TopPostItem(
                         post_id=int(msg_id) if msg_id else 0,
                         title=None,
@@ -268,9 +282,9 @@ async def top_posts(
                         published_at=pub_dt,
                         url=url,
                         views=int(p.get("views") or 0),
-                        likes=int(p.get("reactions_count") or 0),
+                        likes=likes_count,
                         reposts=int(p.get("forwards") or 0),
-                        comments=int(p.get("comments_count") or 0),
+                        comments=comments_count,
                     ))
 
     items.sort(key=lambda x: getattr(x, sort_by), reverse=True)

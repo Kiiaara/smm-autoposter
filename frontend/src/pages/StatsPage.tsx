@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { getOverview, getTopPosts, getSubscribers, getBestTime } from '../api/stats'
+import { getChannels } from '../api/channels'
 import styles from './StatsPage.module.css'
 
 const PLATFORM_LABELS: Record<string, string> = { tg: 'TG', vk: 'VK', ig: 'IG', max: 'MX' }
@@ -38,15 +39,18 @@ export default function StatsPage() {
   })
   const { data: subSeries = [] } = useQuery({ queryKey: ['stats-subs', period], queryFn: () => getSubscribers(period) })
   const { data: bestTime = [] } = useQuery({ queryKey: ['stats-best', period], queryFn: () => getBestTime(period) })
+  const { data: allChannelsRaw = [] } = useQuery({ queryKey: ['channels-active'], queryFn: () => getChannels() })
 
-  // список каналов для фильтра в "Топ постов" - берём из overview
+  // канал в фильтре "Топ постов" - берём ВСЕ активные каналы (не только с собранным snapshot)
   const allChannels = overview?.channels ?? []
-  const channelsForFilter = topPlatform === 'all'
-    ? allChannels
-    : allChannels.filter(c => c.platform === topPlatform)
+  const activeChannels = allChannelsRaw.filter((c: any) => c.is_active)
+  const channelsForTopFilter = (topPlatform === 'all'
+    ? activeChannels
+    : activeChannels.filter((c: any) => c.platform === topPlatform)
+  ).map((c: any) => ({ channel_id: c.id, name: c.name, platform: c.platform }))
 
   // если выбранный канал не подходит под платформу - сбросим
-  if (topChannelId !== 'all' && !channelsForFilter.find(c => c.channel_id === topChannelId)) {
+  if (topChannelId !== 'all' && !channelsForTopFilter.find((c: any) => c.channel_id === topChannelId)) {
     setTimeout(() => setTopChannelId('all'), 0)
   }
 
@@ -209,7 +213,7 @@ export default function StatsPage() {
               </button>
             ))}
           </div>
-          {channelsForFilter.length > 0 && (
+          {channelsForTopFilter.length > 0 && (
             <div className={styles.filterGroup}>
               <span className={styles.sortLabel}>Канал:</span>
               <select
@@ -218,7 +222,7 @@ export default function StatsPage() {
                 onChange={e => setTopChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
               >
                 <option value="all">Все каналы</option>
-                {channelsForFilter.map(c => (
+                {channelsForTopFilter.map((c: any) => (
                   <option key={c.channel_id} value={c.channel_id}>
                     {PLATFORM_LABELS[c.platform]} · {c.name}
                   </option>
