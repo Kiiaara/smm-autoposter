@@ -405,51 +405,22 @@ async def export_posts_xlsx(
     rows: List[dict] = []  # {date, text, views, forwards, reactions, comments, link}
 
     if ch.platform == Platform.tg:
-        from services import tg_stats
-        if not tg_stats.is_configured():
-            raise HTTPException(400, "TGStat не настроен")
-        try:
-            posts = await tg_stats.fetch_channel_posts(ch, limit=200, period_days=period_days)
-        except Exception as e:
-            raise HTTPException(500, f"TGStat error: {e}")
-
-        # username для построения ссылки
-        username = (ch.config_json or {}).get("channel") or ""
-        uname = ""
-        if "t.me/" in username:
-            uname = username.split("t.me/", 1)[1].strip("/").split("/")[0]
-        elif username.startswith("@"):
-            uname = username[1:]
+        # TG-посты теперь лежат в channel_posts (наполняется Telethon-сборщиком).
+        # Берём оттуда всё за период, сортируем по дате.
+        posts = db.query(ChannelPost).filter(
+            ChannelPost.channel_id == channel_id,
+            ChannelPost.published_at >= since,
+        ).order_by(ChannelPost.published_at.desc()).all()
 
         for p in posts:
-            msg_id = p.get("id") or p.get("message_id")
-            pub_ts = p.get("date") or p.get("created_at")
-            if not isinstance(pub_ts, (int, float)):
-                continue
-            pub_dt = datetime.fromtimestamp(pub_ts)
-            if pub_dt < since:
-                continue
-            raw_r = p.get("reactions") or p.get("reactions_count")
-            if isinstance(raw_r, dict):
-                reactions = sum(int(v or 0) for v in raw_r.values())
-            elif isinstance(raw_r, list):
-                reactions = sum(int((r.get("count") or 0) if isinstance(r, dict) else 0) for r in raw_r)
-            else:
-                reactions = int(raw_r or 0)
-            raw_c = p.get("comments") or p.get("comments_count")
-            if isinstance(raw_c, dict):
-                comments = int(raw_c.get("count") or 0)
-            else:
-                comments = int(raw_c or 0)
-            link = p.get("link") or (f"https://t.me/{uname}/{msg_id}" if uname and msg_id else "")
             rows.append({
-                "date": pub_dt.strftime("%Y-%m-%d %H:%M"),
-                "text": _strip_html(p.get("text") or ""),
-                "views": int(p.get("views") or 0),
-                "forwards": int(p.get("forwards") or 0),
-                "reactions": reactions,
-                "comments": comments,
-                "link": link,
+                "date": p.published_at.strftime("%Y-%m-%d %H:%M"),
+                "text": _strip_html(p.text or ""),
+                "views": int(p.views or 0),
+                "forwards": int(p.forwards or 0),
+                "reactions": int(p.reactions or 0),
+                "comments": int(p.comments or 0),
+                "link": p.link or "",
             })
 
     elif ch.platform == Platform.vk:
