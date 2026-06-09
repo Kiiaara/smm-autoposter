@@ -467,12 +467,13 @@ function PostsExplorer({ posts, sortBy }: { posts: any[]; sortBy: SortBy }) {
     }
   }
 
-  // ссылка для iframe: https://t.me/{uname}/{msg_id}?embed=1&userpic=true&dark=1
+  // iframe идёт на наш прокси - бэк скачивает t.me embed через xray (VPN),
+  // и юзеру превью грузится без необходимости иметь свой VPN включённым.
   function embedUrl(p: any): string | null {
     if (!p?.url) return null
     const m = p.url.match(/t\.me\/([^/]+)\/(\d+)/)
     if (!m) return null
-    return `https://t.me/${m[1]}/${m[2]}?embed=1&userpic=true&dark=1`
+    return `/api/stats/tg/embed/${m[1]}/${m[2]}`
   }
 
   const embed = embedUrl(selected)

@@ -624,6 +624,36 @@ def tg_sync_push(
 # Сборщик прямо на сервере цепляется к TG через локальный SOCKS-туннель.
 # Кнопка в UI зовёт этот эндпоинт - юзеру не нужно ничего запускать локально.
 
+@router.get("/tg/embed/{username}/{msg_id}")
+async def tg_embed_proxy(username: str, msg_id: int):
+    """Прокси для t.me/{username}/{msg_id}?embed=1 - чтобы превью грузилось у пользователей
+    без своего VPN. Сервер тянет HTML через xray (TG_PROXY_URL), правит относительные URL
+    на абсолютные и отдаёт клиенту. Картинки и шрифты TG отдаёт прямо со своих CDN -
+    они в РФ не заблочены (заблочен только сам t.me)."""
+    from fastapi.responses import HTMLResponse, Response
+    import httpx
+    from publishers.telegram import _httpx_kwargs
+
+    url = f"https://t.me/{username}/{msg_id}?embed=1&userpic=true&dark=1"
+    try:
+        async with httpx.AsyncClient(**_httpx_kwargs(15), follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    except Exception as e:
+        raise HTTPException(502, f"upstream fetch failed: {e}")
+
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, "t.me returned non-200")
+
+    html = r.text
+    # Делаем относительные ссылки/ассеты абсолютными к t.me - чтоб картинки/CSS грузились напрямую
+    html = html.replace('href="/', 'href="https://t.me/')
+    html = html.replace('src="/', 'src="https://t.me/')
+    return HTMLResponse(content=html, status_code=200, headers={
+        "Cache-Control": "public, max-age=300",
+        "Content-Security-Policy": "frame-ancestors 'self'",
+    })
+
+
 @router.post("/tg/collect-now")
 async def tg_collect_now(
     period_days: int = Query(30, ge=1, le=365),
