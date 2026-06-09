@@ -18,7 +18,7 @@ try:
 except ImportError:
     pass
 
-from telethon import TelegramClient
+from telethon import TelegramClient, connection as tg_connection
 from telethon.sessions import StringSession
 
 
@@ -32,16 +32,24 @@ async def main():
     print("\nВойди в TG-аккаунт (от него будет идти чтение статистики каналов).")
     print("Телефон с плюсом и кодом страны, например +79991234567\n")
 
-    # SOCKS5 прокси если задан (для серверов где TG режется)
-    proxy = None
-    proxy_host = os.environ.get("TELETHON_PROXY_HOST") or "127.0.0.1"
-    proxy_port = os.environ.get("TELETHON_PROXY_PORT")
-    if proxy_port:
-        import socks
-        proxy = (socks.SOCKS5, proxy_host, int(proxy_port))
-        print(f"Использую SOCKS5 прокси {proxy_host}:{proxy_port}\n")
+    # MTProxy / SOCKS5 если задан (для серверов где TG режется)
+    kwargs = {}
+    mtp_host = os.environ.get("TELETHON_MTPROXY_HOST")
+    mtp_port = os.environ.get("TELETHON_MTPROXY_PORT")
+    mtp_secret = os.environ.get("TELETHON_MTPROXY_SECRET")
+    if mtp_host and mtp_port and mtp_secret:
+        kwargs["connection"] = tg_connection.ConnectionTcpMTProxyRandomizedIntermediate
+        kwargs["proxy"] = (mtp_host, int(mtp_port), mtp_secret)
+        print(f"Использую MTProxy {mtp_host}:{mtp_port}\n")
+    else:
+        proxy_host = os.environ.get("TELETHON_PROXY_HOST")
+        proxy_port = os.environ.get("TELETHON_PROXY_PORT")
+        if proxy_host and proxy_port:
+            import socks
+            kwargs["proxy"] = (socks.SOCKS5, proxy_host, int(proxy_port))
+            print(f"Использую SOCKS5 {proxy_host}:{proxy_port}\n")
 
-    async with TelegramClient(StringSession(), int(api_id), api_hash, proxy=proxy) as client:
+    async with TelegramClient(StringSession(), int(api_id), api_hash, **kwargs) as client:
         me = await client.get_me()
         session = client.session.save()
         print()

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from telethon import TelegramClient
+from telethon import TelegramClient, connection as tg_connection
 from telethon.sessions import StringSession
 from telethon.tl.types import Channel as TLChannel, Message
 
@@ -27,12 +27,21 @@ def is_configured() -> bool:
     return bool(settings.telethon_api_id and settings.telethon_api_hash and settings.telethon_session_string)
 
 
-def _build_proxy():
-    """Если в .env задан SOCKS5 - возвращаем tuple для Telethon, иначе None."""
-    if settings.telethon_proxy_host and settings.telethon_proxy_port:
+def _build_client_kwargs():
+    """Возвращает kwargs для TelegramClient с настройками прокси.
+    Приоритет: MTProxy > SOCKS5 > прямое подключение."""
+    kwargs = {}
+    if settings.telethon_mtproxy_host and settings.telethon_mtproxy_port and settings.telethon_mtproxy_secret:
+        kwargs["connection"] = tg_connection.ConnectionTcpMTProxyRandomizedIntermediate
+        kwargs["proxy"] = (
+            settings.telethon_mtproxy_host,
+            settings.telethon_mtproxy_port,
+            settings.telethon_mtproxy_secret,
+        )
+    elif settings.telethon_proxy_host and settings.telethon_proxy_port:
         import socks
-        return (socks.SOCKS5, settings.telethon_proxy_host, settings.telethon_proxy_port)
-    return None
+        kwargs["proxy"] = (socks.SOCKS5, settings.telethon_proxy_host, settings.telethon_proxy_port)
+    return kwargs
 
 
 async def _get_client() -> TelegramClient:
@@ -47,7 +56,7 @@ async def _get_client() -> TelegramClient:
                 StringSession(settings.telethon_session_string),
                 settings.telethon_api_id,
                 settings.telethon_api_hash,
-                proxy=_build_proxy(),
+                **_build_client_kwargs(),
             )
         if not _client.is_connected():
             await _client.connect()

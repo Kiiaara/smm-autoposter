@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Если пусто - Telethon коннектится напрямую.
     telethon_proxy_host: str = ""
     telethon_proxy_port: int = 0
+    # MTProxy для Telethon (альтернатива SOCKS5, надёжнее). Если задан - используется он.
+    telethon_mtproxy_host: str = ""
+    telethon_mtproxy_port: int = 0
+    telethon_mtproxy_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
