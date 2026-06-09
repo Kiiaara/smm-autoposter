@@ -38,9 +38,9 @@ async def collect_subscribers():
 def start_scheduler(interval_seconds: int = 60):
     scheduler.add_job(publish_due_posts, "interval", seconds=interval_seconds, id="publish_job")
     scheduler.add_job(send_due_reminders, "interval", seconds=interval_seconds, id="reminder_job")
-    # stats jobs
-    scheduler.add_job(collect_post_stats, "interval", minutes=15, id="stats_posts_job", next_run_time=datetime.now())
-    scheduler.add_job(collect_subscribers, "interval", hours=1, id="stats_subs_job", next_run_time=datetime.now())
+    # stats jobs - реже, чтобы экономить TGStat-квоту (500 запросов/день на free)
+    scheduler.add_job(collect_post_stats, "interval", hours=2, id="stats_posts_job", next_run_time=datetime.now())
+    scheduler.add_job(collect_subscribers, "interval", hours=6, id="stats_subs_job", next_run_time=datetime.now())
     scheduler.start()
 
 

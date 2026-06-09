@@ -6,8 +6,12 @@
 
 Каналы привязываются к TGStat по @username, который кладётся в Channel.config_json:
   config_json["username"] = "travociv"  (без @)
+
+Кеширование в памяти: ответы TGStat живут CACHE_TTL секунд - это экономит квоту,
+т.к. фронт может дёргать overview/posts много раз подряд.
 """
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -18,6 +22,25 @@ from config import settings
 from models.channel import Channel
 from models.post import PostTarget
 from models.stats import ChannelSnapshot, PostStats
+
+# in-memory кеш для TGStat ответов
+CACHE_TTL_SECONDS = 30 * 60  # 30 минут
+_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cache_get(key: str):
+    item = _cache.get(key)
+    if not item:
+        return None
+    ts, val = item
+    if time.time() - ts > CACHE_TTL_SECONDS:
+        _cache.pop(key, None)
+        return None
+    return val
+
+
+def _cache_set(key: str, val):
+    _cache[key] = (time.time(), val)
 
 log = logging.getLogger("tg_stats")
 
@@ -57,7 +80,13 @@ def _channel_username(ch: Channel) -> Optional[str]:
 
 
 async def _tgstat_get(path: str, params: dict) -> Optional[dict]:
-    """GET к TGStat API. Возвращает payload или None при ошибке."""
+    """GET к TGStat API c кешем в памяти. Экономит квоту - повторные одинаковые запросы
+    не идут на сервер."""
+    cache_key = f"{path}:{sorted(params.items())}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     params = {**params, "token": settings.tgstat_token}
     url = f"{TGSTAT_API}/{path.lstrip('/')}"
     try:
@@ -68,9 +97,15 @@ async def _tgstat_get(path: str, params: dict) -> Optional[dict]:
         log.warning(f"TGStat {path} request failed: {e}")
         return None
     if data.get("status") != "ok":
-        log.warning(f"TGStat {path} error: {data.get('error') or data}")
+        err = data.get("error") or data
+        log.warning(f"TGStat {path} error: {err}")
+        # ошибки про квоту кешим тоже - чтобы не дёргать дальше до сброса
+        if "quota" in str(err).lower():
+            _cache_set(cache_key, None)
         return None
-    return data.get("response")
+    resp = data.get("response")
+    _cache_set(cache_key, resp)
+    return resp
 
 
 async def collect_tg_post_stats(target: PostTarget, db: Session):
