@@ -71,3 +71,6 @@ export const getSubscribers = (period_days = 30) =>
 
 export const getBestTime = (period_days = 60) =>
   client.get<BestTimeCell[]>('/stats/best-time', { params: { period_days } }).then(r => r.data)
+
+export const collectTgNow = (period_days = 30) =>
+  client.post<{ ok: boolean; channels: any[] }>('/stats/tg/collect-now', null, { params: { period_days } }).then(r => r.data)

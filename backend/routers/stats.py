@@ -647,3 +647,23 @@ def tg_sync_push(
     ))
     db.commit()
     return {"ok": True, "posts_upserted": posts_upserted}
+
+
+# ── Серверный Telethon-сборщик (через SOCKS5/xray) ──────
+# Сборщик прямо на сервере цепляется к TG через локальный SOCKS-туннель.
+# Кнопка в UI зовёт этот эндпоинт - юзеру не нужно ничего запускать локально.
+
+@router.post("/tg/collect-now")
+async def tg_collect_now(
+    period_days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Собирает статистику всех активных TG-каналов через Telethon на сервере.
+    Идёт через SOCKS5 (TG_PROXY_URL), пишет в channel_posts + channel_snapshots."""
+    from services.tg_telethon_collector import collect_all_tg_channels, is_configured
+    if not is_configured():
+        raise HTTPException(500, "Telethon на сервере не настроен (TELETHON_API_ID/HASH/SESSION_STRING)")
+    result = await collect_all_tg_channels(db, period_days=period_days)
+    if not result.get("ok"):
+        raise HTTPException(500, result.get("error", "Сбор не удался"))
+    return result
