@@ -645,6 +645,25 @@ async def tg_embed_proxy(username: str, msg_id: int):
     html = _re.sub(r'(src|href)=(")(https://[^"]+)"', _rewrite_url, html)
     html = _re.sub(r'(src|href)=(\')(https://[^\']+)\'', _rewrite_url, html)
 
+    # инжектим наш CSS чтоб превью выглядело адекватно: убираем рамки от t.me,
+    # ставим читаемые шрифты и нормальный фон
+    css_override = """
+    <style>
+      html, body { background: #14151a !important; margin: 0 !important; padding: 12px !important; color: #e8eaed !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; }
+      .tgme_widget_message_wrap, .tgme_widget_message { background: #1d1f27 !important; border-radius: 12px !important; box-shadow: none !important; border: 1px solid #2a2d38 !important; padding: 14px !important; max-width: 100% !important; }
+      .tgme_widget_message_author_name, a, a:visited { color: #8ab4ff !important; }
+      .tgme_widget_message_text { color: #e8eaed !important; line-height: 1.5 !important; font-size: 15px !important; }
+      .tgme_widget_message_footer, .tgme_widget_message_info { color: #9aa0a6 !important; }
+      .tgme_widget_message_bubble_tail, .tgme_widget_message_user { display: none !important; }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-thumb { background: #2a2d38; border-radius: 4px; }
+    </style>
+    """
+    if "</head>" in html:
+        html = html.replace("</head>", css_override + "</head>", 1)
+    else:
+        html = css_override + html
+
     return HTMLResponse(content=html, status_code=200, headers={
         "Cache-Control": "public, max-age=300",
         "Content-Security-Policy": "frame-ancestors 'self'",
