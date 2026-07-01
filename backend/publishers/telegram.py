@@ -250,8 +250,26 @@ async def publish_to_telegram(
 
         if media_paths and not poll_json:
             # Грузим файлы напрямую через multipart - не зависим от TG которому надо качать наш URL.
-            # Это и быстрее, и работает даже если домен где-то блокируется.
             import os, mimetypes
+
+            # TG-лимит caption = 1024 символа. Если текст длиннее - шлём медиа без caption,
+            # а текст отдельным sendMessage ПЕРЕД медиа (так у поста будет и текст, и картинка).
+            TG_CAPTION_LIMIT = 1024
+            caption_html = send_text_html if send_text_html else None
+            send_text_before_media = False
+            if caption_html and len(caption_html) > TG_CAPTION_LIMIT:
+                send_text_before_media = True
+                caption_html = None
+
+            if send_text_before_media:
+                r0 = await _tg_request(bot_token, "sendMessage", {
+                    "chat_id": chat_id,
+                    "text": send_text_html,
+                    "parse_mode": "HTML",
+                })
+                if not r0.get("ok"):
+                    return PublishResult(ok=False, error=r0.get("description", "TG error"))
+                message_id = str(r0["result"].get("message_id"))
 
             if len(media_paths) == 1:
                 path = _local_path(media_paths[0])
@@ -259,15 +277,14 @@ async def publish_to_telegram(
                 mime = mimetypes.guess_type(fname)[0] or "image/jpeg"
                 with open(path, "rb") as fh:
                     payload = {"chat_id": chat_id}
-                    if send_text_html:
-                        payload["caption"] = send_text_html
+                    if caption_html:
+                        payload["caption"] = caption_html
                         payload["parse_mode"] = "HTML"
                     files = {"photo": (fname, fh.read(), mime)}
                     r = await _tg_request_multipart(bot_token, "sendPhoto", payload, files)
             else:
                 files = {}
                 media = []
-                file_handles = []
                 for idx, mp in enumerate(media_paths):
                     path = _local_path(mp)
                     fname = os.path.basename(path)
@@ -277,8 +294,8 @@ async def publish_to_telegram(
                     attach_name = f"photo{idx}"
                     files[attach_name] = (fname, content, mime)
                     media.append({"type": "photo", "media": f"attach://{attach_name}"})
-                if send_text_html:
-                    media[0]["caption"] = send_text_html
+                if caption_html:
+                    media[0]["caption"] = caption_html
                     media[0]["parse_mode"] = "HTML"
                 payload = {
                     "chat_id": chat_id,

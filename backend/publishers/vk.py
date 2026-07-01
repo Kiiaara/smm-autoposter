@@ -16,26 +16,45 @@ async def _vk(method: str, params: Dict, token: str, version: str = "5.131") -> 
     return r.json()
 
 
+def _resolve_upload_path(path: str) -> str:
+    """Универсальный резолвер: пути в БД лежат по-разному ('uploads/x.jpg', '/uploads/x.jpg' и т.п.),
+    а фактически файлы всегда в settings.upload_dir."""
+    import os
+    from config import settings
+    p = path.lstrip("/")
+    if p.startswith("uploads/"):
+        return os.path.join(settings.upload_dir, p[len("uploads/"):])
+    return os.path.join(settings.upload_dir, p)
+
+
 async def _upload_photo(token: str, owner_id: str, path: str, version: str) -> Optional[str]:
     """Upload a local file to VK wall. Returns attachment string like 'photo123_456'."""
-    # photos.getWallUploadServer для групп требует group_id (положительный, без минуса)
     is_group = str(owner_id).startswith("-")
     group_id = str(owner_id).lstrip("-")
 
     server_params = {"group_id": group_id} if is_group else {}
     r = await _vk("photos.getWallUploadServer", server_params, token, version)
-    if "error" in r:
-        return None
+    if "error" in r or "response" not in r:
+        raise RuntimeError(f"getWallUploadServer failed: {r.get('error', r)}")
     upload_url = r["response"]["upload_url"]
 
     # step 2: upload file
-    with open(path.replace("uploads/", "./uploads/"), "rb") as f:
+    file_path = _resolve_upload_path(path)
+    with open(file_path, "rb") as f:
         content = f.read()
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(upload_url, files={"photo": ("photo.jpg", content, "image/jpeg")})
-    upload_data = resp.json()
+    if resp.status_code != 200 or not resp.text.strip():
+        raise RuntimeError(f"VK upload http {resp.status_code}, body='{resp.text[:200]}'")
+    try:
+        upload_data = resp.json()
+    except Exception as e:
+        raise RuntimeError(f"VK upload non-JSON body: {resp.text[:200]}")
 
-    # step 3: save photo - аналогично, для группы передаём group_id
+    if not upload_data.get("photo"):
+        raise RuntimeError(f"VK upload no photo: {upload_data}")
+
+    # step 3: save photo
     save_params = {
         "server": upload_data.get("server"),
         "photo": upload_data.get("photo"),
@@ -45,7 +64,7 @@ async def _upload_photo(token: str, owner_id: str, path: str, version: str) -> O
         save_params["group_id"] = group_id
     r2 = await _vk("photos.saveWallPhoto", save_params, token, version)
     if "error" in r2 or not r2.get("response"):
-        return None
+        raise RuntimeError(f"saveWallPhoto failed: {r2.get('error', r2)}")
 
     photo = r2["response"][0]
     return f"photo{photo['owner_id']}_{photo['id']}"
@@ -62,7 +81,7 @@ async def publish_to_vk(
     try:
         attachments = []
 
-        # upload photos
+        # upload photos - если хоть одна падает, весь пост фейлим с внятной ошибкой
         for path in media_paths:
             att = await _upload_photo(access_token, owner_id, path, version)
             if att:
