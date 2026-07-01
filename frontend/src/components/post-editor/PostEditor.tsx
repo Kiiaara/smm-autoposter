@@ -52,6 +52,23 @@ export default function PostEditor({ editPostId }: Props) {
     return null
   }
 
+  // TG caption на фото/медиа ограничен 1024 символами. Если больше - TG вернёт ошибку.
+  // Считаем длину без HTML-тегов - именно её TG применяет к caption.
+  function validateTgCaption(): string | null {
+    const hasTg = allChannels.some(c =>
+      store.selectedChannels.includes(c.id) && c.platform === 'tg'
+    )
+    if (!hasTg) return null
+    if (!store.mediaPaths || store.mediaPaths.length === 0) return null
+    const raw = (store.textTgHtml || '').replace(/<[^>]+>/g, '')
+    if (raw.length <= 1024) return null
+    return `Для TG подпись к фото/медиа не может быть длиннее 1024 символов (сейчас ${raw.length}). Убери медиа, укороти текст или сними TG-канал.`
+  }
+
+  function validateAll(): string | null {
+    return validatePollVk() || validateTgCaption()
+  }
+
   const mutation = useMutation({
     mutationFn: async (status: PostStatus) => {
       const data: PostCreate = {
@@ -169,7 +186,7 @@ export default function PostEditor({ editPostId }: Props) {
               type="button"
               className="btn btn-primary"
               onClick={() => {
-                const err = validatePollVk()
+                const err = validateAll()
                 if (err) { toast.error(err); return }
                 mutation.mutate('scheduled')
               }}
@@ -181,7 +198,7 @@ export default function PostEditor({ editPostId }: Props) {
               type="button"
               className="btn btn-secondary"
               onClick={() => {
-                const err = validatePollVk()
+                const err = validateAll()
                 if (err) { toast.error(err); return }
                 handlePublishNow()
               }}
