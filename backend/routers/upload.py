@@ -6,7 +6,7 @@ from config import settings
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webp"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".jfif", ".png", ".gif", ".mp4", ".mov", ".webp", ".heic"}
 MAX_SIZE_BYTES = settings.max_upload_size_mb * 1024 * 1024
 
 
