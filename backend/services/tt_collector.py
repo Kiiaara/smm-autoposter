@@ -41,17 +41,20 @@ def _httpx_kwargs(timeout: int = 30) -> Dict:
     return tg_httpx_kwargs(timeout)
 
 
+TT_BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.tiktok.com/",
+}
+
+
 async def _collect_via_html(username: str, period_days: int) -> Dict[str, Any]:
-    """Fallback-парсер через HTML профиля TT.
-    Достаёт JSON из <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__">."""
+    """HTML-парсер профиля TT. Достаёт JSON из __UNIVERSAL_DATA_FOR_REHYDRATION__.
+    Даёт подписчиков + первую страницу видео (~30 штук)."""
     url = f"https://www.tiktok.com/@{username}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
     try:
         async with httpx.AsyncClient(**_httpx_kwargs(30), follow_redirects=True) as client:
-            r = await client.get(url, headers=headers)
+            r = await client.get(url, headers=TT_BROWSER_HEADERS)
     except Exception as e:
         return {"ok": False, "error": f"http fetch: {e}"}
 
@@ -64,7 +67,7 @@ async def _collect_via_html(username: str, period_days: int) -> Dict[str, Any]:
         html, re.DOTALL,
     )
     if not m:
-        return {"ok": False, "error": "no __UNIVERSAL_DATA__ in HTML"}
+        return {"ok": False, "error": "no __UNIVERSAL_DATA__ (TT captcha/blocked?)"}
 
     try:
         data = json.loads(m.group(1))
@@ -74,26 +77,33 @@ async def _collect_via_html(username: str, period_days: int) -> Dict[str, Any]:
     default = data.get("__DEFAULT_SCOPE__") or {}
     user_detail = default.get("webapp.user-detail") or {}
     user_info = user_detail.get("userInfo") or {}
-    user = user_info.get("user") or {}
     stats = user_info.get("stats") or user_info.get("statsV2") or {}
-
     subscribers = int(stats.get("followerCount") or 0)
 
-    # Список видео в HTML лежит в item-list или postList. Иногда есть, иногда нет -
-    # тогда посты не соберём (нужен TikTokApi). Проверим оба места.
-    item_list = default.get("webapp.item-list") or {}
-    items = item_list.get("itemList") or []
+    # Список видео живёт в webapp.video-detail / webapp.item-list / user-post
+    items = []
+    for key in ("webapp.item-list", "webapp.user-post-list", "webapp.video-detail"):
+        block = default.get(key) or {}
+        candidate = block.get("itemList") or block.get("itemStruct") or []
+        if isinstance(candidate, list) and candidate:
+            items = candidate
+            break
+        if isinstance(candidate, dict):
+            items = [candidate]
+            break
 
     since = datetime.now() - timedelta(days=period_days)
     posts: List[Dict[str, Any]] = []
     for it in items:
+        if not isinstance(it, dict):
+            continue
         create_time = int(it.get("createTime") or 0)
         if not create_time:
             continue
         pub_dt = datetime.fromtimestamp(create_time)
         if pub_dt < since:
             continue
-        st = it.get("stats") or {}
+        st = it.get("stats") or it.get("statsV2") or {}
         posts.append({
             "message_id": int(it.get("id") or 0),
             "published_at": pub_dt,
@@ -110,58 +120,76 @@ async def _collect_via_html(username: str, period_days: int) -> Dict[str, Any]:
         "subscribers": subscribers,
         "posts": posts,
         "source": "html",
+        "sec_uid": (user_info.get("user") or {}).get("secUid"),
     }
 
 
-async def _collect_via_tiktokapi(username: str, period_days: int) -> Dict[str, Any]:
-    """Основной путь - через либу TikTokApi (playwright)."""
-    try:
-        from TikTokApi import TikTokApi
-    except ImportError:
-        return {"ok": False, "error": "TikTokApi not installed"}
+async def _collect_via_web_api(username: str, sec_uid: str, period_days: int) -> Dict[str, Any]:
+    """Дозагрузка постов через web-api TT. Работает если у нас есть secUid юзера
+    (его отдаёт HTML). Тянем список постов постранично через post/item_list."""
+    if not sec_uid:
+        return {"ok": False, "error": "no sec_uid for api call"}
 
-    proxy_url = settings.tg_proxy_url or None
-    proxies = [proxy_url] if proxy_url else None
+    since = datetime.now() - timedelta(days=period_days)
+    posts: List[Dict[str, Any]] = []
+    cursor = 0
+    has_more = True
+    pages = 0
+    max_pages = 5  # ~150 видео
 
-    try:
-        async with TikTokApi() as api:
-            await api.create_sessions(num_sessions=1, sleep_after=3, proxies=proxies)
-            user = api.user(username)
-            info = await user.info()
+    async with httpx.AsyncClient(**_httpx_kwargs(30), follow_redirects=True) as client:
+        while has_more and pages < max_pages:
+            params = {
+                "aid": "1988",
+                "app_language": "en",
+                "device_platform": "web",
+                "secUid": sec_uid,
+                "cursor": str(cursor),
+                "count": "30",
+            }
+            try:
+                r = await client.get(
+                    "https://www.tiktok.com/api/post/item_list/",
+                    params=params, headers=TT_BROWSER_HEADERS,
+                )
+                data = r.json()
+            except Exception as e:
+                log.warning(f"TT web-api page {pages}: {e}")
+                break
 
-            stats = (info.get("userInfo") or {}).get("stats") or {}
-            subscribers = int(stats.get("followerCount") or 0)
-
-            since = datetime.now() - timedelta(days=period_days)
-            posts: List[Dict[str, Any]] = []
-            async for video in user.videos(count=100):
-                v = video.as_dict
-                create_time = int(v.get("createTime") or 0)
+            items = data.get("itemList") or []
+            if not items:
+                break
+            oldest_in_page = None
+            for it in items:
+                create_time = int(it.get("createTime") or 0)
                 if not create_time:
                     continue
                 pub_dt = datetime.fromtimestamp(create_time)
+                oldest_in_page = pub_dt if oldest_in_page is None else min(oldest_in_page, pub_dt)
                 if pub_dt < since:
-                    break
-                st = v.get("stats") or {}
+                    continue
+                st = it.get("stats") or it.get("statsV2") or {}
                 posts.append({
-                    "message_id": int(v.get("id") or 0),
+                    "message_id": int(it.get("id") or 0),
                     "published_at": pub_dt,
-                    "text": (v.get("desc") or "")[:1000],
+                    "text": (it.get("desc") or "")[:1000],
                     "views": int(st.get("playCount") or 0),
                     "forwards": int(st.get("shareCount") or 0),
                     "reactions": int(st.get("diggCount") or 0),
                     "comments": int(st.get("commentCount") or 0),
-                    "link": f"https://www.tiktok.com/@{username}/video/{v.get('id')}",
+                    "link": f"https://www.tiktok.com/@{username}/video/{it.get('id')}",
                 })
+            # если старейший пост в странице уже < since - дальше не листаем
+            if oldest_in_page and oldest_in_page < since:
+                break
+            has_more = bool(data.get("hasMore"))
+            cursor = int(data.get("cursor") or 0)
+            pages += 1
 
-            return {
-                "ok": True,
-                "subscribers": subscribers,
-                "posts": posts,
-                "source": "tiktokapi",
-            }
-    except Exception as e:
-        return {"ok": False, "error": f"TikTokApi: {e}"}
+    return {"ok": True, "posts": posts, "source": "web-api"}
+
+
 
 
 def _upsert_channel_data(db: Session, channel_id: int, subscribers: int, posts: List[Dict[str, Any]]):
@@ -234,28 +262,37 @@ async def collect_all_tt_channels(db: Session, period_days: int = 30) -> Dict[st
             })
             continue
 
-        # 1. primary: TikTokApi
-        res = await _collect_via_tiktokapi(username, period_days)
-        # 2. fallback: HTML
-        if not res.get("ok"):
-            log.warning(f"TT {username}: primary failed ({res.get('error')}), trying HTML")
-            res = await _collect_via_html(username, period_days)
-
-        if res.get("ok"):
-            _upsert_channel_data(db, ch.id, res["subscribers"], res["posts"])
-            summary.append({
-                "channel_id": ch.id,
-                "name": ch.name,
-                "ok": True,
-                "subscribers": res["subscribers"],
-                "posts": len(res["posts"]),
-                "source": res.get("source"),
-            })
-        else:
+        # 1. HTML - тянем подписчиков + secUid
+        html_res = await _collect_via_html(username, period_days)
+        if not html_res.get("ok"):
             summary.append({
                 "channel_id": ch.id, "name": ch.name,
-                "ok": False, "error": res.get("error"),
+                "ok": False, "error": f"html: {html_res.get('error')}",
             })
+            continue
+
+        subscribers = html_res["subscribers"]
+        posts = html_res["posts"]
+        sec_uid = html_res.get("sec_uid")
+
+        # 2. если постов мало (< 5) - пробуем догрузить через web-api
+        if len(posts) < 5 and sec_uid:
+            api_res = await _collect_via_web_api(username, sec_uid, period_days)
+            if api_res.get("ok") and api_res.get("posts"):
+                # объединяем без дубликатов
+                existing_ids = {p["message_id"] for p in posts}
+                for p in api_res["posts"]:
+                    if p["message_id"] not in existing_ids:
+                        posts.append(p)
+
+        _upsert_channel_data(db, ch.id, subscribers, posts)
+        summary.append({
+            "channel_id": ch.id,
+            "name": ch.name,
+            "ok": True,
+            "subscribers": subscribers,
+            "posts": len(posts),
+        })
 
     db.commit()
     return {"ok": True, "channels": summary}
