@@ -345,7 +345,7 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
             # разные варианты обёртки ответа - пробуем все
             root = data.get("data") if isinstance(data.get("data"), dict) else data
             items = root.get("itemList") or root.get("items") or root.get("aweme_list") or []
-            log.info(f"TT rapidapi page {page}: got {len(items)} items, hasMore={root.get('hasMore')}, cursor={root.get('cursor')}")
+            print(f"TT rapidapi page {page}: got {len(items)} items, hasMore={root.get('hasMore')}, cursor={root.get('cursor')}", flush=True)
             if not items:
                 break
 
@@ -373,11 +373,11 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
                 })
 
             if oldest_in_page and oldest_in_page < since:
-                log.info(f"TT rapidapi: oldest in page {oldest_in_page} < since {since}, stop paginating")
+                print(f"TT rapidapi: oldest in page {oldest_in_page} < since {since}, stop paginating", flush=True)
                 break
             has_more = bool(root.get("hasMore") or root.get("has_more"))
             if not has_more:
-                log.info("TT rapidapi: hasMore=False, stop paginating")
+                print("TT rapidapi: hasMore=False, stop paginating", flush=True)
                 break
             new_cursor = int(root.get("cursor") or root.get("max_cursor") or 0)
             if new_cursor == cursor:
@@ -385,5 +385,5 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
                 break
             cursor = new_cursor
 
-    log.info(f"TT rapidapi total posts collected: {len(posts)}")
+    print(f"TT rapidapi total posts collected: {len(posts)}", flush=True)
     return {"ok": True, "subscribers": subscribers, "posts": posts, "source": "rapidapi"}
