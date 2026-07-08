@@ -167,6 +167,7 @@ export default function ChannelSettings() {
             <option value="vk">ВКонтакте</option>
             <option value="ig">Instagram</option>
             <option value="max">Max</option>
+            <option value="tt">TikTok</option>
           </select>
           <input className="input" placeholder="Название канала" value={newName} onChange={e => setNewName(e.target.value)} />
           {STUBS.includes(newPlatform) ? (
