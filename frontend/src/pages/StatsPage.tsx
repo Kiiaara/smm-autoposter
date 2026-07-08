@@ -191,8 +191,8 @@ export default function StatsPage() {
       posts: acc.posts + sp.posts_count,
       views: acc.views + sp.total_views,
       likes: acc.likes + sp.total_likes,
-      reposts: acc.reposts + 0,  // в service_posts нет total_reposts
-      comments: acc.comments + sp.avg_comments * sp.posts_count,
+      reposts: acc.reposts + (sp.total_reposts || 0),
+      comments: acc.comments + (sp.total_comments || 0),
     }), { posts: 0, views: 0, likes: 0, reposts: 0, comments: 0 })
 
     if (totalService.posts === 0) return null
@@ -388,7 +388,7 @@ export default function StatsPage() {
                   <th className={styles.num}>Постов</th>
                   <th className={styles.num}>Просмотры<small>всего / в среднем</small></th>
                   <th className={styles.num}>Реакции<small>всего / в среднем</small></th>
-                  <th className={styles.num}>Репосты</th>
+                  <th className={styles.num}>Репосты<small>всего / в среднем</small></th>
                   <th className={styles.num}>Комменты<small>всего / в среднем</small></th>
                 </tr>
               </thead>
@@ -404,7 +404,10 @@ export default function StatsPage() {
                     <b>{serviceVsOrganic.service.likes.toLocaleString('ru')}</b>
                     <small>{serviceVsOrganic.service.avg.likes.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td className={styles.num}>{serviceVsOrganic.service.reposts.toLocaleString('ru')}</td>
+                  <td className={styles.num}>
+                    <b>{serviceVsOrganic.service.reposts.toLocaleString('ru')}</b>
+                    <small>{serviceVsOrganic.service.avg.reposts.toLocaleString('ru')} / пост</small>
+                  </td>
                   <td className={styles.num}>
                     <b>{serviceVsOrganic.service.comments.toLocaleString('ru')}</b>
                     <small>{serviceVsOrganic.service.avg.comments.toLocaleString('ru')} / пост</small>
@@ -421,7 +424,10 @@ export default function StatsPage() {
                     {serviceVsOrganic.organic.likes.toLocaleString('ru')}
                     <small>{serviceVsOrganic.organic.avg.likes.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td className={styles.num}>{serviceVsOrganic.organic.reposts.toLocaleString('ru')}</td>
+                  <td className={styles.num}>
+                    {serviceVsOrganic.organic.reposts.toLocaleString('ru')}
+                    <small>{serviceVsOrganic.organic.avg.reposts.toLocaleString('ru')} / пост</small>
+                  </td>
                   <td className={styles.num}>
                     {serviceVsOrganic.organic.comments.toLocaleString('ru')}
                     <small>{serviceVsOrganic.organic.avg.comments.toLocaleString('ru')} / пост</small>
@@ -442,7 +448,7 @@ export default function StatsPage() {
                       <td className={styles.num}>—</td>
                       <td className={styles.num} style={{ color: clr(s.views, o.views) }}>{diff(s.views, o.views)}</td>
                       <td className={styles.num} style={{ color: clr(s.likes, o.likes) }}>{diff(s.likes, o.likes)}</td>
-                      <td className={styles.num}>—</td>
+                      <td className={styles.num} style={{ color: clr(s.reposts, o.reposts) }}>{diff(s.reposts, o.reposts)}</td>
                       <td className={styles.num} style={{ color: clr(s.comments, o.comments) }}>{diff(s.comments, o.comments)}</td>
                     </tr>
                   )

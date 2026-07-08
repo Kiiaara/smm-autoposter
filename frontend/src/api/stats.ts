@@ -18,8 +18,11 @@ export interface ServicePostsSummary {
   avg_views: number
   avg_likes: number
   avg_comments: number
+  avg_reposts: number
   total_views: number
   total_likes: number
+  total_reposts: number
+  total_comments: number
 }
 
 export interface Overview {

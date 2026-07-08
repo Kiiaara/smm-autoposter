@@ -51,8 +51,11 @@ class ServicePostsSummary(BaseModel):
     avg_views: int
     avg_likes: int
     avg_comments: int
+    avg_reposts: int = 0
     total_views: int
     total_likes: int
+    total_reposts: int = 0
+    total_comments: int = 0
 
 
 class SubscriberPoint(BaseModel):
@@ -209,8 +212,11 @@ async def overview(period_days: int = 30, db: Session = Depends(get_db)):
             avg_views=agg["views"] // count,
             avg_likes=agg["likes"] // count,
             avg_comments=agg["comments"] // count,
+            avg_reposts=agg["reposts"] // count,
             total_views=agg["views"],
             total_likes=agg["likes"],
+            total_reposts=agg["reposts"],
+            total_comments=agg["comments"],
         ))
 
     return OverviewResponse(
