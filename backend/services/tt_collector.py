@@ -193,11 +193,17 @@ async def _collect_via_web_api(username: str, sec_uid: str, period_days: int) ->
 
 
 def _upsert_channel_data(db: Session, channel_id: int, subscribers: int, posts: List[Dict[str, Any]]):
-    """Тот же upsert что в TG-сборщике."""
+    """Upsert постов канала. Дедуплицируем внутри пачки - RapidAPI может отдавать
+    одно и то же видео на разных страницах при листании."""
+    seen: set = set()
     for p in posts:
+        key = p["message_id"]
+        if key in seen:
+            continue
+        seen.add(key)
         existing = db.query(ChannelPost).filter(
             ChannelPost.channel_id == channel_id,
-            ChannelPost.message_id == p["message_id"],
+            ChannelPost.message_id == key,
         ).first()
         if existing:
             existing.text = p["text"]
@@ -211,7 +217,7 @@ def _upsert_channel_data(db: Session, channel_id: int, subscribers: int, posts: 
         else:
             db.add(ChannelPost(
                 channel_id=channel_id,
-                message_id=p["message_id"],
+                message_id=key,
                 text=p["text"],
                 published_at=p["published_at"],
                 views=p["views"],
@@ -221,6 +227,8 @@ def _upsert_channel_data(db: Session, channel_id: int, subscribers: int, posts: 
                 link=p["link"],
                 updated_at=datetime.now(),
             ))
+        # flush чтобы следующая проверка "existing" увидела только что добавленный ряд
+        db.flush()
 
     if posts:
         n = len(posts)
