@@ -164,7 +164,7 @@ export default function StatsPage() {
   }
 
   // Топ-посты уже фильтруются на сервере через platform+channel_id
-  const [topTab, setTopTab] = useState<'all' | 'service'>('all')
+  const [topTab, setTopTab] = useState<'all' | 'service' | 'organic'>('all')
 
   const period_days_effective = sinceDate ? undefined : period
   const exportUrl = topChannelId !== 'all'
@@ -515,42 +515,50 @@ export default function StatsPage() {
             className={`${styles.sortTab} ${topTab === 'all' ? styles.sortTabActive : ''}`}
             onClick={() => setTopTab('all')}
           >
-            Все посты канала
+            Все посты
           </button>
           <button
             className={`${styles.sortTab} ${topTab === 'service' ? styles.sortTabActive : ''}`}
             onClick={() => setTopTab('service')}
           >
-            Только через наш сервис
+            🚀 Через сервис
+          </button>
+          <button
+            className={`${styles.sortTab} ${topTab === 'organic' ? styles.sortTabActive : ''}`}
+            onClick={() => setTopTab('organic')}
+          >
+            Не через сервис
           </button>
         </div>
 
-        {topTab === 'all' ? (
-          <>
-            <div className={styles.sortTabs}>
-              {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (
-                <button
-                  key={s}
-                  className={`${styles.sortTab} ${sortBy === s ? styles.sortTabActive : ''}`}
-                  onClick={() => setSortBy(s)}
-                >
-                  {SORT_LABELS[s]}
-                </button>
-              ))}
-            </div>
-            {topPosts.length === 0 ? (
-              <p className={styles.empty}>Нет данных за период. Собери статистику кнопками сверху.</p>
-            ) : (
-              <PostsExplorer posts={topPosts} sortBy={sortBy} />
-            )}
-          </>
-        ) : (
-          scopedServicePosts.length === 0 ? (
-            <p className={styles.empty}>За период нет постов, опубликованных через наш сервис для этого фильтра</p>
-          ) : (
-            <ServicePostsTable items={scopedServicePosts} />
-          )
-        )}
+        <div className={styles.sortTabs}>
+          {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (
+            <button
+              key={s}
+              className={`${styles.sortTab} ${sortBy === s ? styles.sortTabActive : ''}`}
+              onClick={() => setSortBy(s)}
+            >
+              {SORT_LABELS[s]}
+            </button>
+          ))}
+        </div>
+
+        {(() => {
+          const filtered = topPosts.filter((p: any) => {
+            if (topTab === 'service') return p.via_service === true
+            if (topTab === 'organic') return p.via_service !== true
+            return true
+          })
+          if (filtered.length === 0) {
+            const msg = topTab === 'service'
+              ? 'За период нет постов через наш сервис для этого фильтра'
+              : topTab === 'organic'
+                ? 'За период все посты этого канала вышли через наш сервис - "не через сервис" пусто'
+                : 'Нет данных за период. Собери статистику кнопками сверху.'
+            return <p className={styles.empty}>{msg}</p>
+          }
+          return <PostsExplorer posts={filtered} sortBy={sortBy} />
+        })()}
       </Section>
 
     </div>

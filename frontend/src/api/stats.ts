@@ -40,12 +40,14 @@ export interface TopPost {
   preview?: string
   platform: string
   channel_name: string
+  channel_id?: number
   published_at: string
   url?: string
   views: number
   likes: number
   reposts: number
   comments: number
+  via_service?: boolean
 }
 
 export interface SubscriberPoint { date: string; subscribers: number }

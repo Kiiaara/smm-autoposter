@@ -23,12 +23,14 @@ class TopPostItem(BaseModel):
     preview: Optional[str]
     platform: str
     channel_name: str
+    channel_id: Optional[int] = None
     published_at: datetime
     url: Optional[str]
     views: int
     likes: int
     reposts: int
     comments: int
+    via_service: bool = False
 
 
 class ChannelSummary(BaseModel):
@@ -248,94 +250,46 @@ async def top_posts(
     since = datetime.now() - timedelta(days=period_days)
     items: List[TopPostItem] = []
 
-    want_vk = platform in (None, "vk")
-    want_tg = platform in (None, "tg")
-    want_tt = platform in (None, "tt")
+    # 1. Строим набор (channel_id, published_message_id) - это посты через наш сервис.
+    # По ним потом ставим флаг via_service=True на постах из channel_posts.
+    service_pairs: set[tuple[int, str]] = set()
+    for t in db.query(PostTarget).filter(
+        PostTarget.status == PostTargetStatus.published,
+        PostTarget.published_at >= since,
+    ).all():
+        if t.channel_id and t.published_message_id:
+            service_pairs.add((t.channel_id, str(t.published_message_id)))
 
-    # VK: из БД, как и раньше
-    if want_vk:
-        q = db.query(PostTarget).filter(
-            PostTarget.status == PostTargetStatus.published,
-            PostTarget.published_at >= since,
-        )
-        targets = q.all()
-        latest = _latest_stats_subquery(db)
-        for t in targets:
-            if not t.channel or t.channel.platform != Platform.vk:
-                continue
-            if channel_id and t.channel_id != channel_id:
-                continue
-            s = latest.get(t.id)
-            if not s:
-                continue
-            post = t.post
-            if not post:
-                continue
-            items.append(TopPostItem(
-                post_id=post.id,
-                title=post.title,
-                preview=(post.text_plain or post.text_tg or "")[:120],
-                platform="vk",
-                channel_name=t.channel.name,
-                published_at=t.published_at,
-                url=t.published_url,
-                views=s.views,
-                likes=s.likes,
-                reposts=s.reposts,
-                comments=s.comments,
-            ))
+    # 2. Все посты каналов из channel_posts (все платформы пишут туда все свои посты)
+    cp_query = db.query(ChannelPost).join(Channel).filter(
+        Channel.is_active == True,
+        ChannelPost.published_at >= since,
+    )
+    if platform:
+        cp_query = cp_query.filter(Channel.platform == Platform(platform))
+    if channel_id:
+        cp_query = cp_query.filter(ChannelPost.channel_id == channel_id)
 
-    # TG: посты канала из ChannelPost (заливает локальный коллектор через Telethon)
-    if want_tg:
-        tg_q = db.query(ChannelPost).join(Channel).filter(
-            Channel.platform == Platform.tg,
-            ChannelPost.published_at >= since,
-        )
-        if channel_id:
-            tg_q = tg_q.filter(ChannelPost.channel_id == channel_id)
-        for cp in tg_q.all():
-            ch = cp.channel
-            if not ch:
-                continue
-            items.append(TopPostItem(
-                post_id=int(cp.message_id),
-                title=None,
-                preview=(cp.text or "")[:160],
-                platform="tg",
-                channel_name=ch.name,
-                published_at=cp.published_at,
-                url=cp.link or None,
-                views=cp.views or 0,
-                likes=cp.reactions or 0,
-                reposts=cp.forwards or 0,
-                comments=cp.comments or 0,
-            ))
-
-    # TT: посты канала из ChannelPost (заливает tt_collector через TikTokApi)
-    if want_tt:
-        tt_q = db.query(ChannelPost).join(Channel).filter(
-            Channel.platform == Platform.tt,
-            ChannelPost.published_at >= since,
-        )
-        if channel_id:
-            tt_q = tt_q.filter(ChannelPost.channel_id == channel_id)
-        for cp in tt_q.all():
-            ch = cp.channel
-            if not ch:
-                continue
-            items.append(TopPostItem(
-                post_id=int(cp.message_id),
-                title=None,
-                preview=(cp.text or "")[:160],
-                platform="tt",
-                channel_name=ch.name,
-                published_at=cp.published_at,
-                url=cp.link or None,
-                views=cp.views or 0,
-                likes=cp.reactions or 0,
-                reposts=cp.forwards or 0,
-                comments=cp.comments or 0,
-            ))
+    for cp in cp_query.all():
+        ch = cp.channel
+        if not ch:
+            continue
+        via = (ch.id, str(cp.message_id)) in service_pairs
+        items.append(TopPostItem(
+            post_id=int(cp.message_id),
+            title=None,
+            preview=(cp.text or "")[:160],
+            platform=ch.platform.value,
+            channel_name=ch.name,
+            channel_id=ch.id,
+            published_at=cp.published_at,
+            url=cp.link or None,
+            views=cp.views or 0,
+            likes=cp.reactions or 0,
+            reposts=cp.forwards or 0,
+            comments=cp.comments or 0,
+            via_service=via,
+        ))
 
     items.sort(key=lambda x: getattr(x, sort_by), reverse=True)
     return items[:limit]
