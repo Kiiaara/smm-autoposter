@@ -126,56 +126,211 @@ export default function StatsPage() {
   }
   const subsSelected = subsValidSeries.find(s => s.channel_id === subsChannelId)
 
+  // === Глобальные фильтры страницы: платформа + канал ===
+  // topPlatform и topChannelId теперь управляют ВСЕЙ страницей (не только "Топ постов").
+  // Каналы для выпадашки - берём все активные из /api/channels, фильтруем по платформе.
+  const filteredActiveChannels = topPlatform === 'all'
+    ? activeChannels
+    : activeChannels.filter((c: any) => c.platform === topPlatform)
+
+  // Фильтр списка "все посты через сервис" под глобальный канал/платформу
+  const scopedServicePosts = allServicePosts.filter((sp: any) => {
+    if (topPlatform !== 'all' && sp.platform !== topPlatform) return false
+    if (topChannelId !== 'all' && sp.channel_id !== topChannelId) return false
+    return true
+  })
+
+  // Каналы для таблицы "По каналам" - фильтруем по платформе (если выбрана)
+  const scopedChannelTotals = channelTotals.filter((c: any) => {
+    if (topPlatform !== 'all' && c.platform !== topPlatform) return false
+    if (topChannelId !== 'all' && c.channel_id !== topChannelId) return false
+    return true
+  })
+
+  // Динамика подписчиков - фильтруем ряды под глобальный канал
+  const scopedSubsSeries = subsValidSeries.filter((s: any) => {
+    if (topPlatform !== 'all' && s.platform !== topPlatform) return false
+    if (topChannelId !== 'all' && s.channel_id !== topChannelId) return false
+    return true
+  })
+
+  // Метрики сверху: если выбран конкретный канал - показываем его total из channelTotals,
+  // иначе сумма по scopedChannelTotals (это точная сумма из БД, не overview с TGStat)
+  const scopedMetrics = {
+    posts: scopedChannelTotals.reduce((s: number, c: any) => s + c.posts_count, 0),
+    views: scopedChannelTotals.reduce((s: number, c: any) => s + c.total_views, 0),
+    likes: scopedChannelTotals.reduce((s: number, c: any) => s + c.total_likes, 0),
+    reposts: scopedChannelTotals.reduce((s: number, c: any) => s + c.total_reposts, 0),
+    comments: scopedChannelTotals.reduce((s: number, c: any) => s + c.total_comments, 0),
+  }
+
+  // Топ-посты уже фильтруются на сервере через platform+channel_id
+  const [topTab, setTopTab] = useState<'all' | 'service'>('all')
+
+  const period_days_effective = sinceDate ? undefined : period
+  const exportUrl = topChannelId !== 'all'
+    ? `/api/stats/posts/export.xlsx?channel_id=${topChannelId}${period_days_effective ? `&period_days=${period_days_effective}` : ''}`
+    : null
+
+  // "Через сервис" vs "Не через сервис" - для тыканья стримеру.
+  // - Все посты канала (scopedChannelTotals) - тут сумма ВСЕХ постов канала за период.
+  // - Через сервис (scopedServicePosts) - то что вышло у нас в редакторе.
+  // - Не через сервис = вычитание.
+  const serviceVsOrganic = (() => {
+    // Работает когда выбран конкретный канал (или один канал в фильтре).
+    // Берём тотал канала - вычитаем метрики "через сервис".
+    if (scopedChannelTotals.length === 0) return null
+    const totalAll = scopedChannelTotals.reduce((acc: any, c: any) => ({
+      posts: acc.posts + c.posts_count,
+      views: acc.views + c.total_views,
+      likes: acc.likes + c.total_likes,
+      reposts: acc.reposts + c.total_reposts,
+      comments: acc.comments + c.total_comments,
+    }), { posts: 0, views: 0, likes: 0, reposts: 0, comments: 0 })
+
+    const totalService = scopedServicePosts.reduce((acc: any, sp: any) => ({
+      posts: acc.posts + sp.posts_count,
+      views: acc.views + sp.total_views,
+      likes: acc.likes + sp.total_likes,
+      reposts: acc.reposts + 0,  // в service_posts нет total_reposts
+      comments: acc.comments + sp.avg_comments * sp.posts_count,
+    }), { posts: 0, views: 0, likes: 0, reposts: 0, comments: 0 })
+
+    if (totalService.posts === 0) return null
+
+    const organic = {
+      posts: Math.max(0, totalAll.posts - totalService.posts),
+      views: Math.max(0, totalAll.views - totalService.views),
+      likes: Math.max(0, totalAll.likes - totalService.likes),
+      reposts: Math.max(0, totalAll.reposts - totalService.reposts),
+      comments: Math.max(0, totalAll.comments - totalService.comments),
+    }
+
+    // Средние на пост - вот тут интересно тыкать стримеру
+    const avg = (t: any) => ({
+      views: t.posts ? Math.round(t.views / t.posts) : 0,
+      likes: t.posts ? Math.round(t.likes / t.posts) : 0,
+      reposts: t.posts ? Math.round(t.reposts / t.posts) : 0,
+      comments: t.posts ? Math.round(t.comments / t.posts) : 0,
+    })
+
+    return {
+      service: { ...totalService, avg: avg(totalService) },
+      organic: { ...organic, avg: avg(organic) },
+    }
+  })()
+
   return (
     <div className={styles.page}>
+      {/* Заголовок */}
       <div className={styles.header}>
         <h1 className={styles.pageTitle}>Статистика</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
-            className={styles.periodSelect}
-            value={sinceDate ? '' : period}
-            onChange={e => { setPeriod(Number(e.target.value)); setSinceDate(''); setUntilDate('') }}
-          >
-            <option value={7}>Последние 7 дней</option>
-            <option value={30}>Последние 30 дней</option>
-            <option value={60}>Последние 60 дней</option>
-            <option value={90}>Последние 90 дней</option>
-            {sinceDate && <option value="">Свой диапазон</option>}
-          </select>
-          <span className={styles.sortLabel}>или с</span>
-          <input
-            type="date"
-            className={styles.channelSelect}
-            value={sinceDate}
-            onChange={e => setSinceDate(e.target.value)}
-          />
-          <span className={styles.sortLabel}>по</span>
-          <input
-            type="date"
-            className={styles.channelSelect}
-            value={untilDate}
-            onChange={e => setUntilDate(e.target.value)}
-          />
-          {sinceDate && (
-            <button className={styles.clearBtn} onClick={() => { setSinceDate(''); setUntilDate('') }} title="Сбросить диапазон">
-              ×
+      </div>
+
+      {/* Единая панель фильтров - управляет всей страницей */}
+      <div className={styles.section} style={{ padding: '14px 16px' }}>
+        <div className={styles.filtersRow} style={{ flexWrap: 'wrap', gap: 12 }}>
+          <div className={styles.filterGroup}>
+            <span className={styles.sortLabel}>Площадка:</span>
+            {(['all', 'tg', 'vk', 'tt'] as const).map(p => (
+              <button
+                key={p}
+                className={`${styles.sortBtn} ${topPlatform === p ? styles.sortBtnActive : ''}`}
+                onClick={() => { setTopPlatform(p); setTopChannelId('all') }}
+              >
+                {p === 'all' ? 'Все' : PLATFORM_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          <div className={styles.filterGroup}>
+            <span className={styles.sortLabel}>Канал:</span>
+            <select
+              className={styles.channelSelect}
+              value={topChannelId}
+              onChange={e => setTopChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+            >
+              <option value="all">Все каналы</option>
+              {filteredActiveChannels.map((c: any) => (
+                <option key={c.id} value={c.id}>
+                  {PLATFORM_LABELS[c.platform]} · {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.filterGroup}>
+            <span className={styles.sortLabel}>Период:</span>
+            <select
+              className={styles.periodSelect}
+              value={sinceDate ? '' : period}
+              onChange={e => { setPeriod(Number(e.target.value)); setSinceDate(''); setUntilDate('') }}
+            >
+              <option value={7}>7 дней</option>
+              <option value={30}>30 дней</option>
+              <option value={60}>60 дней</option>
+              <option value={90}>90 дней</option>
+              {sinceDate && <option value="">Свой</option>}
+            </select>
+            <span className={styles.sortLabel}>или с</span>
+            <input
+              type="date"
+              className={styles.channelSelect}
+              value={sinceDate}
+              onChange={e => setSinceDate(e.target.value)}
+            />
+            <span className={styles.sortLabel}>по</span>
+            <input
+              type="date"
+              className={styles.channelSelect}
+              value={untilDate}
+              onChange={e => setUntilDate(e.target.value)}
+            />
+            {sinceDate && (
+              <button className={styles.clearBtn} onClick={() => { setSinceDate(''); setUntilDate('') }} title="Сбросить">×</button>
+            )}
+          </div>
+          <div className={styles.filterGroup} style={{ marginLeft: 'auto' }}>
+            <button
+              className={`btn btn-primary ${styles.exportBtn}`}
+              onClick={() => handleCollect('tg')}
+              disabled={collecting}
+              title="Собрать свежую статистику TG-каналов через VPN-туннель"
+            >
+              {collecting ? '⏳' : '🔄'} TG
             </button>
-          )}
+            <button
+              className={`btn btn-primary ${styles.exportBtn}`}
+              onClick={() => handleCollect('tt')}
+              disabled={collecting}
+              title="Собрать свежую статистику TikTok-каналов"
+            >
+              {collecting ? '⏳' : '🔄'} TikTok
+            </button>
+            {exportUrl && (
+              <a href={exportUrl} className={`btn btn-primary ${styles.exportBtn}`} download>
+                📥 Excel
+              </a>
+            )}
+          </div>
         </div>
+        {collectMsg && (
+          <div className={styles.sortLabel} style={{ marginTop: 8 }}>{collectMsg}</div>
+        )}
       </div>
 
-      {/* Общие метрики */}
+      {/* Метрики - меняются под глобальный фильтр */}
       <div className={styles.metricsRow}>
-        <MetricCard label="Постов" value={overview?.total_posts ?? 0} />
-        <MetricCard label="Просмотров" value={overview?.total_views ?? 0} />
-        <MetricCard label="Лайков" value={overview?.total_likes ?? 0} />
-        <MetricCard label="Комментариев" value={overview?.total_comments ?? 0} />
+        <MetricCard label="Постов" value={scopedMetrics.posts} />
+        <MetricCard label="Просмотров" value={scopedMetrics.views} />
+        <MetricCard label="Реакций" value={scopedMetrics.likes} />
+        <MetricCard label="Комментариев" value={scopedMetrics.comments} />
       </div>
 
-      {/* Суммы по каналам за период */}
-      <Section title="Просмотры по каналам за период">
-        {channelTotals.length === 0 ? (
-          <p className={styles.empty}>Нет данных за период. Проверь что каналы активны и собери статистику кнопками "Обновить TG/TT" ниже.</p>
+      {/* Таблица "По каналам" - главная секция */}
+      <Section title={topChannelId === 'all' ? 'По каналам за период' : 'Итого по каналу'}>
+        {scopedChannelTotals.length === 0 ? (
+          <p className={styles.empty}>
+            Нет данных за период. Собери статистику кнопками "🔄 TG / TikTok" сверху.
+          </p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className={styles.cmpTable}>
@@ -190,8 +345,8 @@ export default function StatsPage() {
                 </tr>
               </thead>
               <tbody>
-                {channelTotals.map((c: any) => (
-                  <tr key={c.channel_id}>
+                {scopedChannelTotals.map((c: any) => (
+                  <tr key={c.channel_id} style={{ cursor: 'pointer' }} onClick={() => setTopChannelId(c.channel_id)}>
                     <td>
                       <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[c.platform] }}>
                         {PLATFORM_LABELS[c.platform]}
@@ -205,29 +360,116 @@ export default function StatsPage() {
                     <td style={{ textAlign: 'right' }}>{c.total_comments.toLocaleString('ru')}</td>
                   </tr>
                 ))}
-                <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
-                  <td>Итого</td>
-                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.posts_count, 0).toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_views, 0).toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_likes, 0).toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_reposts, 0).toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_comments, 0).toLocaleString('ru')}</td>
-                </tr>
+                {scopedChannelTotals.length > 1 && (
+                  <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
+                    <td>Итого</td>
+                    <td style={{ textAlign: 'right' }}>{scopedMetrics.posts.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{scopedMetrics.views.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{scopedMetrics.likes.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{scopedMetrics.reposts.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{scopedMetrics.comments.toLocaleString('ru')}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         )}
       </Section>
 
-      {/* Каналы - сравнение */}
-      <Section title="Сравнение каналов">
-        {allChannels.length === 0 ? (
-          <p className={styles.empty}>Пока нет опубликованных постов с собранной статистикой</p>
+      {/* Через сервис vs Обычные посты - таблица для сравнения */}
+      {serviceVsOrganic && (
+        <Section title="Через наш сервис vs обычные посты">
+          <div style={{ overflowX: 'auto' }}>
+            <table className={styles.cmpTable}>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th style={{ textAlign: 'right' }}>Постов</th>
+                  <th style={{ textAlign: 'right' }}>Просмотры<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
+                  <th style={{ textAlign: 'right' }}>Реакции<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
+                  <th style={{ textAlign: 'right' }}>Репосты</th>
+                  <th style={{ textAlign: 'right' }}>Комментарии<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ background: 'rgba(123, 97, 255, 0.08)' }}>
+                  <td><b>🚀 Через сервис</b></td>
+                  <td style={{ textAlign: 'right' }}><b>{serviceVsOrganic.service.posts.toLocaleString('ru')}</b></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <b>{serviceVsOrganic.service.views.toLocaleString('ru')}</b>
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.views.toLocaleString('ru')} / пост</small>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <b>{serviceVsOrganic.service.likes.toLocaleString('ru')}</b>
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.likes.toLocaleString('ru')} / пост</small>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.service.reposts.toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <b>{serviceVsOrganic.service.comments.toLocaleString('ru')}</b>
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.comments.toLocaleString('ru')} / пост</small>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Обычные (не через сервис)</td>
+                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.organic.posts.toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {serviceVsOrganic.organic.views.toLocaleString('ru')}
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.views.toLocaleString('ru')} / пост</small>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {serviceVsOrganic.organic.likes.toLocaleString('ru')}
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.likes.toLocaleString('ru')} / пост</small>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.organic.reposts.toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {serviceVsOrganic.organic.comments.toLocaleString('ru')}
+                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.comments.toLocaleString('ru')} / пост</small>
+                  </td>
+                </tr>
+                {(() => {
+                  const s = serviceVsOrganic.service.avg
+                  const o = serviceVsOrganic.organic.avg
+                  const diff = (a: number, b: number) => {
+                    if (!b) return '—'
+                    const pct = Math.round(((a - b) / b) * 100)
+                    return `${pct >= 0 ? '+' : ''}${pct}%`
+                  }
+                  const clr = (a: number, b: number) => a > b ? '#4caf50' : a < b ? '#f44336' : 'inherit'
+                  return (
+                    <tr style={{ borderTop: '2px solid var(--border)' }}>
+                      <td><b>Разница (среднее на пост)</b></td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right', color: clr(s.views, o.views) }}><b>{diff(s.views, o.views)}</b></td>
+                      <td style={{ textAlign: 'right', color: clr(s.likes, o.likes) }}><b>{diff(s.likes, o.likes)}</b></td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right', color: clr(s.comments, o.comments) }}><b>{diff(s.comments, o.comments)}</b></td>
+                    </tr>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
+      {/* Динамика подписчиков - фильтрована под канал/платформу */}
+      <Section title="Динамика подписчиков">
+        {scopedSubsSeries.length === 0 ? (
+          <p className={styles.empty}>Нужно минимум 2 точки данных. Подожди пока соберётся (раз в час) или обнови статистику.</p>
+        ) : (
+          <SubscribersChart series={scopedSubsSeries} />
+        )}
+      </Section>
+
+      {/* Сравнение A vs B - в отдельной секции */}
+      <Section title="Сравнение каналов A vs B">
+        {allChannels.length < 2 ? (
+          <p className={styles.empty}>Для сравнения нужно минимум 2 канала со статистикой</p>
         ) : (
           <>
             <div className={styles.filtersRow}>
               <div className={styles.filterGroup}>
-                <span className={styles.sortLabel}>Канал A:</span>
+                <span className={styles.sortLabel}>A:</span>
                 <select
                   className={styles.channelSelect}
                   value={cmpA}
@@ -241,7 +483,7 @@ export default function StatsPage() {
                 </select>
               </div>
               <div className={styles.filterGroup}>
-                <span className={styles.sortLabel}>Канал B:</span>
+                <span className={styles.sortLabel}>B:</span>
                 <select
                   className={styles.channelSelect}
                   value={cmpB}
@@ -255,9 +497,7 @@ export default function StatsPage() {
                   ))}
                 </select>
                 {cmpB !== '' && (
-                  <button className={styles.clearBtn} onClick={() => setCmpB('')} title="Убрать второй канал">
-                    ×
-                  </button>
+                  <button className={styles.clearBtn} onClick={() => setCmpB('')} title="Убрать">×</button>
                 )}
               </div>
             </div>
@@ -266,135 +506,48 @@ export default function StatsPage() {
         )}
       </Section>
 
-      {/* По нашим постам */}
-      <Section title="По постам через сервис">
-        {allServicePosts.length === 0 ? (
-          <p className={styles.empty}>За период не было опубликованных постов через сервис</p>
-        ) : (
-          <>
-            <div className={styles.filtersRow}>
-              <div className={styles.filterGroup}>
-                <span className={styles.sortLabel}>Канал:</span>
-                <select
-                  className={styles.channelSelect}
-                  value={serviceChannelId}
-                  onChange={e => setServiceChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                >
-                  <option value="all">Все каналы (сводно)</option>
-                  {allServicePosts.map(sp => (
-                    <option key={sp.channel_id} value={sp.channel_id}>
-                      {PLATFORM_LABELS[sp.platform]} · {sp.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <ServicePostsTable items={filteredServicePosts} />
-          </>
-        )}
-      </Section>
-
-      {/* График подписчиков */}
-      <Section title="Динамика подписчиков">
-        {subsValidSeries.length === 0 ? (
-          <p className={styles.empty}>Нужно минимум 2 точки данных. Подожди пока соберётся (раз в час)</p>
-        ) : (
-          <>
-            <div className={styles.filtersRow}>
-              <div className={styles.filterGroup}>
-                <span className={styles.sortLabel}>Канал:</span>
-                <select
-                  className={styles.channelSelect}
-                  value={subsChannelId}
-                  onChange={e => setSubsChannelId(e.target.value === '' ? '' : Number(e.target.value))}
-                >
-                  {subsValidSeries.map(s => (
-                    <option key={s.channel_id} value={s.channel_id}>
-                      {PLATFORM_LABELS[s.platform]} · {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {subsSelected && <SubscribersChart series={[subsSelected]} />}
-          </>
-        )}
-      </Section>
-
-      {/* Топ постов */}
+      {/* Топ постов + вкладки Все / Через сервис */}
       <Section title="Топ постов">
-        <div className={styles.filtersRow}>
-          <div className={styles.filterGroup}>
-            <span className={styles.sortLabel}>Платформа:</span>
-            {(['all', 'tg', 'vk', 'tt'] as const).map(p => (
-              <button
-                key={p}
-                className={`${styles.sortBtn} ${topPlatform === p ? styles.sortBtnActive : ''}`}
-                onClick={() => setTopPlatform(p)}
-              >
-                {p === 'all' ? 'Все' : PLATFORM_LABELS[p]}
-              </button>
-            ))}
-          </div>
-          {channelsForTopFilter.length > 0 && (
-            <div className={styles.filterGroup}>
-              <span className={styles.sortLabel}>Канал:</span>
-              <select
-                className={styles.channelSelect}
-                value={topChannelId}
-                onChange={e => setTopChannelId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              >
-                <option value="all">Все каналы</option>
-                {channelsForTopFilter.map((c: any) => (
-                  <option key={c.channel_id} value={c.channel_id}>
-                    {PLATFORM_LABELS[c.platform]} · {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {topChannelId !== 'all' && (
-            <a
-              href={`/api/stats/posts/export.xlsx?channel_id=${topChannelId}&period_days=${period}`}
-              className={`btn btn-primary ${styles.exportBtn}`}
-              download
-            >
-              📥 Экспорт в Excel
-            </a>
-          )}
-          <button
-            className={`btn btn-primary ${styles.exportBtn}`}
-            onClick={() => handleCollect('tg')}
-            disabled={collecting}
-            title="Собрать свежую статистику TG-каналов через VPN-туннель"
-          >
-            {collecting ? '⏳ Собираю...' : '🔄 Обновить TG'}
-          </button>
-          <button
-            className={`btn btn-primary ${styles.exportBtn}`}
-            onClick={() => handleCollect('tt')}
-            disabled={collecting}
-            title="Собрать свежую статистику TikTok-каналов"
-          >
-            {collecting ? '⏳ Собираю...' : '🔄 Обновить TT'}
-          </button>
-          {collectMsg && <span className={styles.sortLabel}>{collectMsg}</span>}
-        </div>
         <div className={styles.sortTabs}>
-          {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (
-            <button
-              key={s}
-              className={`${styles.sortTab} ${sortBy === s ? styles.sortTabActive : ''}`}
-              onClick={() => setSortBy(s)}
-            >
-              {SORT_LABELS[s]}
-            </button>
-          ))}
+          <button
+            className={`${styles.sortTab} ${topTab === 'all' ? styles.sortTabActive : ''}`}
+            onClick={() => setTopTab('all')}
+          >
+            Все посты канала
+          </button>
+          <button
+            className={`${styles.sortTab} ${topTab === 'service' ? styles.sortTabActive : ''}`}
+            onClick={() => setTopTab('service')}
+          >
+            Только через наш сервис
+          </button>
         </div>
-        {topPosts.length === 0 ? (
-          <p className={styles.empty}>Нет данных за выбранный период</p>
+
+        {topTab === 'all' ? (
+          <>
+            <div className={styles.sortTabs}>
+              {(['views', 'likes', 'reposts', 'comments'] as SortBy[]).map(s => (
+                <button
+                  key={s}
+                  className={`${styles.sortTab} ${sortBy === s ? styles.sortTabActive : ''}`}
+                  onClick={() => setSortBy(s)}
+                >
+                  {SORT_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            {topPosts.length === 0 ? (
+              <p className={styles.empty}>Нет данных за период. Собери статистику кнопками сверху.</p>
+            ) : (
+              <PostsExplorer posts={topPosts} sortBy={sortBy} />
+            )}
+          </>
         ) : (
-          <PostsExplorer posts={topPosts} sortBy={sortBy} />
+          scopedServicePosts.length === 0 ? (
+            <p className={styles.empty}>За период нет постов, опубликованных через наш сервис для этого фильтра</p>
+          ) : (
+            <ServicePostsTable items={scopedServicePosts} />
+          )
         )}
       </Section>
 
