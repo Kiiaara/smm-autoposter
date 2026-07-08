@@ -24,7 +24,7 @@ export default function ChannelSelector() {
     )
   }
 
-  const PLATFORM_LABELS: Record<string, string> = { tg: 'Telegram', vk: 'ВК', ig: 'Instagram', max: 'Max' }
+  const PLATFORM_LABELS: Record<string, string> = { tg: 'Telegram', vk: 'ВК', ig: 'Instagram', max: 'Max', tt: 'TikTok' }
 
   const grouped = selectedNetworks.reduce<Record<string, Channel[]>>((acc, net) => {
     acc[net] = filtered.filter(ch => ch.platform === net)

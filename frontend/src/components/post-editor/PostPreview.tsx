@@ -12,6 +12,7 @@ const PLATFORM_DEFAULTS: Record<Platform, string> = {
   vk: 'Ваша группа',
   ig: 'username',
   max: 'Ваш канал',
+  tt: 'Ваш TikTok',
 }
 
 const TABS: { id: Platform; label: string }[] = [

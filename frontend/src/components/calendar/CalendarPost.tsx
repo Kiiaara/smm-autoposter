@@ -3,10 +3,10 @@ import type { CalendarPost } from '../../types'
 import styles from './CalendarPost.module.css'
 
 const PLATFORM_COLORS: Record<string, string> = {
-  tg: '#29b6f6', vk: '#4a76a8', ig: '#e1306c', max: '#ff6b35',
+  tg: '#29b6f6', vk: '#4a76a8', ig: '#e1306c', max: '#ff6b35', tt: '#ff0050',
 }
 const PLATFORM_ICONS: Record<string, string> = {
-  tg: 'TG', vk: 'VK', ig: 'IG', max: 'MX',
+  tg: 'TG', vk: 'VK', ig: 'IG', max: 'MX', tt: 'TT',
 }
 
 interface Props {
