@@ -27,7 +27,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
         if len(content) > MAX_SIZE_BYTES:
             raise HTTPException(status_code=400, detail=f"File {file.filename} exceeds {settings.max_upload_size_mb}MB")
 
-        filename = f"{uuid.uuid4()}{ext}"
+        # .jfif = jpeg с другим расширением. VK/TG нормально глотают только .jpg,
+        # поэтому просто переименовываем при сохранении.
+        save_ext = ".jpg" if ext == ".jfif" else ext
+        filename = f"{uuid.uuid4()}{save_ext}"
         path = os.path.join(settings.upload_dir, filename)
         with open(path, "wb") as f:
             f.write(content)
