@@ -93,6 +93,61 @@
 }
 .clearBtn:hover { color: var(--text); border-color: var(--text2); }
 
+/* Обычная HTML-таблица: "По каналам", "Через сервис vs обычные" - с бордерами и padding */
+.dataTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.dataTable th,
+.dataTable td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+.dataTable thead th {
+  background: var(--bg2);
+  font-size: var(--fs-sm);
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.dataTable tbody tr:hover {
+  background: rgba(255,255,255,0.03);
+}
+.dataTable tbody tr:last-child td {
+  border-bottom: none;
+}
+.dataTable tbody tr.clickable {
+  cursor: pointer;
+}
+.dataTable .num {
+  text-align: right;
+  font-weight: 600;
+}
+.dataTable .rowTotal {
+  background: var(--bg2);
+  font-weight: 700;
+  border-top: 2px solid var(--border);
+}
+.dataTable .rowHighlight {
+  background: rgba(123, 97, 255, 0.08);
+}
+.dataTable small {
+  display: block;
+  opacity: 0.6;
+  font-size: var(--fs-xs);
+  margin-top: 2px;
+  font-weight: 400;
+}
+
 /* Сравнение каналов: таблица 2-х колонок (A / B / разница) */
 .cmpTable {
   display: flex;

@@ -333,41 +333,41 @@ export default function StatsPage() {
           </p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className={styles.cmpTable}>
+            <table className={styles.dataTable}>
               <thead>
                 <tr>
                   <th>Канал</th>
-                  <th style={{ textAlign: 'right' }}>Постов</th>
-                  <th style={{ textAlign: 'right' }}>Просмотры</th>
-                  <th style={{ textAlign: 'right' }}>Реакции</th>
-                  <th style={{ textAlign: 'right' }}>Репосты</th>
-                  <th style={{ textAlign: 'right' }}>Комментарии</th>
+                  <th className={styles.num}>Постов</th>
+                  <th className={styles.num}>Просмотры</th>
+                  <th className={styles.num}>Реакции</th>
+                  <th className={styles.num}>Репосты</th>
+                  <th className={styles.num}>Комменты</th>
                 </tr>
               </thead>
               <tbody>
                 {scopedChannelTotals.map((c: any) => (
-                  <tr key={c.channel_id} style={{ cursor: 'pointer' }} onClick={() => setTopChannelId(c.channel_id)}>
+                  <tr key={c.channel_id} className={styles.clickable} onClick={() => setTopChannelId(c.channel_id)}>
                     <td>
                       <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[c.platform] }}>
                         {PLATFORM_LABELS[c.platform]}
                       </span>
                       {' '}{c.name}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{c.posts_count.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{c.total_views.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{c.total_likes.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{c.total_reposts.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{c.total_comments.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{c.posts_count.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{c.total_views.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{c.total_likes.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{c.total_reposts.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{c.total_comments.toLocaleString('ru')}</td>
                   </tr>
                 ))}
                 {scopedChannelTotals.length > 1 && (
-                  <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
+                  <tr className={styles.rowTotal}>
                     <td>Итого</td>
-                    <td style={{ textAlign: 'right' }}>{scopedMetrics.posts.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{scopedMetrics.views.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{scopedMetrics.likes.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{scopedMetrics.reposts.toLocaleString('ru')}</td>
-                    <td style={{ textAlign: 'right' }}>{scopedMetrics.comments.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{scopedMetrics.posts.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{scopedMetrics.views.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{scopedMetrics.likes.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{scopedMetrics.reposts.toLocaleString('ru')}</td>
+                    <td className={styles.num}>{scopedMetrics.comments.toLocaleString('ru')}</td>
                   </tr>
                 )}
               </tbody>
@@ -380,50 +380,50 @@ export default function StatsPage() {
       {serviceVsOrganic && (
         <Section title="Через наш сервис vs обычные посты">
           <div style={{ overflowX: 'auto' }}>
-            <table className={styles.cmpTable}>
+            <table className={styles.dataTable}>
               <thead>
                 <tr>
                   <th></th>
-                  <th style={{ textAlign: 'right' }}>Постов</th>
-                  <th style={{ textAlign: 'right' }}>Просмотры<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
-                  <th style={{ textAlign: 'right' }}>Реакции<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
-                  <th style={{ textAlign: 'right' }}>Репосты</th>
-                  <th style={{ textAlign: 'right' }}>Комментарии<br /><small style={{ opacity: 0.6 }}>всего / в среднем</small></th>
+                  <th className={styles.num}>Постов</th>
+                  <th className={styles.num}>Просмотры<small>всего / в среднем</small></th>
+                  <th className={styles.num}>Реакции<small>всего / в среднем</small></th>
+                  <th className={styles.num}>Репосты</th>
+                  <th className={styles.num}>Комменты<small>всего / в среднем</small></th>
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ background: 'rgba(123, 97, 255, 0.08)' }}>
+                <tr className={styles.rowHighlight}>
                   <td><b>🚀 Через сервис</b></td>
-                  <td style={{ textAlign: 'right' }}><b>{serviceVsOrganic.service.posts.toLocaleString('ru')}</b></td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}><b>{serviceVsOrganic.service.posts.toLocaleString('ru')}</b></td>
+                  <td className={styles.num}>
                     <b>{serviceVsOrganic.service.views.toLocaleString('ru')}</b>
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.views.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.service.avg.views.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}>
                     <b>{serviceVsOrganic.service.likes.toLocaleString('ru')}</b>
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.likes.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.service.avg.likes.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.service.reposts.toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}>{serviceVsOrganic.service.reposts.toLocaleString('ru')}</td>
+                  <td className={styles.num}>
                     <b>{serviceVsOrganic.service.comments.toLocaleString('ru')}</b>
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.service.avg.comments.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.service.avg.comments.toLocaleString('ru')} / пост</small>
                   </td>
                 </tr>
                 <tr>
                   <td>Обычные (не через сервис)</td>
-                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.organic.posts.toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}>{serviceVsOrganic.organic.posts.toLocaleString('ru')}</td>
+                  <td className={styles.num}>
                     {serviceVsOrganic.organic.views.toLocaleString('ru')}
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.views.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.organic.avg.views.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}>
                     {serviceVsOrganic.organic.likes.toLocaleString('ru')}
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.likes.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.organic.avg.likes.toLocaleString('ru')} / пост</small>
                   </td>
-                  <td style={{ textAlign: 'right' }}>{serviceVsOrganic.organic.reposts.toLocaleString('ru')}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className={styles.num}>{serviceVsOrganic.organic.reposts.toLocaleString('ru')}</td>
+                  <td className={styles.num}>
                     {serviceVsOrganic.organic.comments.toLocaleString('ru')}
-                    <br /><small style={{ opacity: 0.6 }}>{serviceVsOrganic.organic.avg.comments.toLocaleString('ru')} / пост</small>
+                    <small>{serviceVsOrganic.organic.avg.comments.toLocaleString('ru')} / пост</small>
                   </td>
                 </tr>
                 {(() => {
@@ -436,13 +436,13 @@ export default function StatsPage() {
                   }
                   const clr = (a: number, b: number) => a > b ? '#4caf50' : a < b ? '#f44336' : 'inherit'
                   return (
-                    <tr style={{ borderTop: '2px solid var(--border)' }}>
-                      <td><b>Разница (среднее на пост)</b></td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', color: clr(s.views, o.views) }}><b>{diff(s.views, o.views)}</b></td>
-                      <td style={{ textAlign: 'right', color: clr(s.likes, o.likes) }}><b>{diff(s.likes, o.likes)}</b></td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', color: clr(s.comments, o.comments) }}><b>{diff(s.comments, o.comments)}</b></td>
+                    <tr className={styles.rowTotal}>
+                      <td>Разница (среднее на пост)</td>
+                      <td className={styles.num}>—</td>
+                      <td className={styles.num} style={{ color: clr(s.views, o.views) }}>{diff(s.views, o.views)}</td>
+                      <td className={styles.num} style={{ color: clr(s.likes, o.likes) }}>{diff(s.likes, o.likes)}</td>
+                      <td className={styles.num}>—</td>
+                      <td className={styles.num} style={{ color: clr(s.comments, o.comments) }}>{diff(s.comments, o.comments)}</td>
                     </tr>
                   )
                 })()}
