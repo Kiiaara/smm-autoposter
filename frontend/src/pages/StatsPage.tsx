@@ -363,16 +363,6 @@ export default function StatsPage() {
                 )}
               </tbody>
             </table>
-            {scopedChannelTotals.length > 0 && (
-              <div className={styles.totalSummary}>
-                <span className={styles.totalLabel}>Всего за период:</span>
-                <span className={styles.totalItem}><b>{scopedMetrics.posts.toLocaleString('ru')}</b> постов</span>
-                <span className={styles.totalItem}><b>{scopedMetrics.views.toLocaleString('ru')}</b> просмотров</span>
-                <span className={styles.totalItem}><b>{scopedMetrics.likes.toLocaleString('ru')}</b> реакций</span>
-                <span className={styles.totalItem}><b>{scopedMetrics.reposts.toLocaleString('ru')}</b> репостов</span>
-                <span className={styles.totalItem}><b>{scopedMetrics.comments.toLocaleString('ru')}</b> комментариев</span>
-              </div>
-            )}
           </div>
         )}
       </Section>
