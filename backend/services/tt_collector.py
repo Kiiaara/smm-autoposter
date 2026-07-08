@@ -328,7 +328,7 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
         since = datetime.now() - timedelta(days=period_days)
         posts: List[Dict[str, Any]] = []
         cursor = 0
-        max_pages = 5
+        max_pages = 20  # до ~600 видео - хватит на любую активность
 
         for page in range(max_pages):
             try:
@@ -342,7 +342,10 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
                 log.warning(f"TT rapidapi page {page}: {e}")
                 break
 
-            items = (data.get("data") or {}).get("itemList") or data.get("itemList") or []
+            # разные варианты обёртки ответа - пробуем все
+            root = data.get("data") if isinstance(data.get("data"), dict) else data
+            items = root.get("itemList") or root.get("items") or root.get("aweme_list") or []
+            log.info(f"TT rapidapi page {page}: got {len(items)} items, hasMore={root.get('hasMore')}, cursor={root.get('cursor')}")
             if not items:
                 break
 
@@ -350,30 +353,37 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
             for it in items:
                 if not isinstance(it, dict):
                     continue
-                create_time = int(it.get("createTime") or 0)
+                create_time = int(it.get("createTime") or it.get("create_time") or 0)
                 if not create_time:
                     continue
                 pub_dt = datetime.fromtimestamp(create_time)
                 oldest_in_page = pub_dt if oldest_in_page is None else min(oldest_in_page, pub_dt)
                 if pub_dt < since:
                     continue
-                st = it.get("stats") or it.get("statsV2") or {}
+                st = it.get("stats") or it.get("statsV2") or it.get("statistics") or {}
                 posts.append({
-                    "message_id": int(it.get("id") or 0),
+                    "message_id": int(it.get("id") or it.get("aweme_id") or 0),
                     "published_at": pub_dt,
                     "text": (it.get("desc") or "")[:1000],
-                    "views": int(st.get("playCount") or 0),
-                    "forwards": int(st.get("shareCount") or 0),
-                    "reactions": int(st.get("diggCount") or 0),
-                    "comments": int(st.get("commentCount") or 0),
-                    "link": f"https://www.tiktok.com/@{username}/video/{it.get('id')}",
+                    "views": int(st.get("playCount") or st.get("play_count") or 0),
+                    "forwards": int(st.get("shareCount") or st.get("share_count") or 0),
+                    "reactions": int(st.get("diggCount") or st.get("digg_count") or 0),
+                    "comments": int(st.get("commentCount") or st.get("comment_count") or 0),
+                    "link": f"https://www.tiktok.com/@{username}/video/{it.get('id') or it.get('aweme_id')}",
                 })
 
             if oldest_in_page and oldest_in_page < since:
+                log.info(f"TT rapidapi: oldest in page {oldest_in_page} < since {since}, stop paginating")
                 break
-            has_more = bool((data.get("data") or {}).get("hasMore") or data.get("hasMore"))
+            has_more = bool(root.get("hasMore") or root.get("has_more"))
             if not has_more:
+                log.info("TT rapidapi: hasMore=False, stop paginating")
                 break
-            cursor = int((data.get("data") or {}).get("cursor") or data.get("cursor") or 0)
+            new_cursor = int(root.get("cursor") or root.get("max_cursor") or 0)
+            if new_cursor == cursor:
+                log.warning(f"TT rapidapi: cursor didn't advance ({cursor}), stop to avoid infinite loop")
+                break
+            cursor = new_cursor
 
+    log.info(f"TT rapidapi total posts collected: {len(posts)}")
     return {"ok": True, "subscribers": subscribers, "posts": posts, "source": "rapidapi"}
