@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { getOverview, getTopPosts, getSubscribers, getBestTime, collectTgNow, collectTtNow, getChannelTotals } from '../api/stats'
+import { getOverview, getTopPosts, getSubscribers, collectTgNow, collectTtNow, getChannelTotals } from '../api/stats'
 import { getChannels } from '../api/channels'
 import { useQueryClient } from '@tanstack/react-query'
 import styles from './StatsPage.module.css'
@@ -88,7 +88,6 @@ export default function StatsPage() {
     }),
   })
   const { data: subSeries = [] } = useQuery({ queryKey: ['stats-subs', period], queryFn: () => getSubscribers(period) })
-  const { data: bestTime = [] } = useQuery({ queryKey: ['stats-best', period], queryFn: () => getBestTime(period) })
   const { data: allChannelsRaw = [] } = useQuery({ queryKey: ['channels-active'], queryFn: () => getChannels() })
 
   // канал в фильтре "Топ постов" - берём ВСЕ активные каналы (не только с собранным snapshot)
@@ -317,14 +316,6 @@ export default function StatsPage() {
         )}
       </div>
 
-      {/* Метрики - меняются под глобальный фильтр */}
-      <div className={styles.metricsRow}>
-        <MetricCard label="Постов" value={scopedMetrics.posts} />
-        <MetricCard label="Просмотров" value={scopedMetrics.views} />
-        <MetricCard label="Реакций" value={scopedMetrics.likes} />
-        <MetricCard label="Комментариев" value={scopedMetrics.comments} />
-      </div>
-
       {/* Таблица "По каналам" - главная секция */}
       <Section title={topChannelId === 'all' ? 'По каналам за период' : 'Итого по каналу'}>
         {scopedChannelTotals.length === 0 ? (
@@ -501,7 +492,12 @@ export default function StatsPage() {
                 )}
               </div>
             </div>
-            <ChannelCompareTable a={cmpChannelA} b={cmpChannelB} />
+            <ChannelCompareTable
+              a={cmpChannelA}
+              b={cmpChannelB}
+              totalsA={channelTotals.find(t => t.channel_id === cmpA)}
+              totalsB={channelTotals.find(t => t.channel_id === cmpB)}
+            />
           </>
         )}
       </Section>
@@ -551,14 +547,6 @@ export default function StatsPage() {
         )}
       </Section>
 
-      {/* Лучшее время */}
-      <Section title="Лучшее время для публикаций">
-        {bestTime.length === 0 ? (
-          <p className={styles.empty}>Нужно больше опубликованных постов чтобы построить тепловую карту</p>
-        ) : (
-          <BestTimeHeatmap data={bestTime} />
-        )}
-      </Section>
     </div>
   )
 }
@@ -590,13 +578,16 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-function ChannelCompareTable({ a, b }: { a?: any; b?: any }) {
+function ChannelCompareTable({ a, b, totalsA, totalsB }: { a?: any; b?: any; totalsA?: any; totalsB?: any }) {
   if (!a) return null
-  const rows: { label: string; key: string }[] = [
-    { label: 'Подписчиков', key: 'subscribers' },
-    { label: 'Постов в канале', key: 'posts_count' },
-    { label: 'Ср. просмотры', key: 'avg_views' },
-    { label: 'Ср. лайки', key: 'avg_likes' },
+  // Собираем ряды: подписчики + метрики за выбранный период (не средние)
+  const rows: { label: string; av: number; bv: number }[] = [
+    { label: 'Подписчиков', av: a.subscribers || 0, bv: b?.subscribers || 0 },
+    { label: 'Постов за период', av: totalsA?.posts_count || 0, bv: totalsB?.posts_count || 0 },
+    { label: 'Просмотры за период', av: totalsA?.total_views || 0, bv: totalsB?.total_views || 0 },
+    { label: 'Реакции за период', av: totalsA?.total_likes || 0, bv: totalsB?.total_likes || 0 },
+    { label: 'Репосты за период', av: totalsA?.total_reposts || 0, bv: totalsB?.total_reposts || 0 },
+    { label: 'Комментарии за период', av: totalsA?.total_comments || 0, bv: totalsB?.total_comments || 0 },
   ]
 
   function diff(av: number, bv: number) {
@@ -617,15 +608,13 @@ function ChannelCompareTable({ a, b }: { a?: any; b?: any }) {
         {b && <div className={styles.cmpDiffHead}>A − B</div>}
       </div>
       {rows.map(r => {
-        const av = a[r.key] as number
-        const bv = b ? (b[r.key] as number) : 0
-        const diffStr = b ? diff(av, bv) : ''
-        const diffClass = !b ? '' : av > bv ? styles.diffPositive : av < bv ? styles.diffNegative : ''
+        const diffStr = b ? diff(r.av, r.bv) : ''
+        const diffClass = !b ? '' : r.av > r.bv ? styles.diffPositive : r.av < r.bv ? styles.diffNegative : ''
         return (
-          <div key={r.key} className={styles.cmpRow}>
+          <div key={r.label} className={styles.cmpRow}>
             <div className={styles.cmpLabel}>{r.label}</div>
-            <div className={styles.cmpValue}>{av.toLocaleString('ru')}</div>
-            {b && <div className={styles.cmpValue}>{bv.toLocaleString('ru')}</div>}
+            <div className={styles.cmpValue}>{r.av.toLocaleString('ru')}</div>
+            {b && <div className={styles.cmpValue}>{r.bv.toLocaleString('ru')}</div>}
             {b && <div className={`${styles.cmpDiff} ${diffClass}`}>{diffStr}</div>}
           </div>
         )
