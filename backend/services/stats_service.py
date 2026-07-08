@@ -56,9 +56,9 @@ async def collect_vk_channel_subs(channel: Channel, db: Session):
 
     group_id = str(owner_id).lstrip("-")
 
-    # 1. подписчики
+    # 1. подписчики. Параметр называется group_ids (мн. число) - иначе VK возвращает пустой ответ.
     r = await _vk("groups.getById", {
-        "group_id": group_id,
+        "group_ids": group_id,
         "fields": "members_count",
     }, token, version)
 
