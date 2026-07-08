@@ -825,7 +825,8 @@ def channel_totals(
 
     result: Dict[int, Dict] = {}
 
-    # TG/TT - берём из channel_posts
+    # Все платформы (TG/TT/VK) - берём из channel_posts (сборщики каждой платформы
+    # пишут туда все посты канала, не только через наш сервис)
     cps = db.query(ChannelPost).join(Channel).filter(
         Channel.is_active == True,
         ChannelPost.published_at >= since,
@@ -845,32 +846,6 @@ def channel_totals(
         agg["total_likes"] += int(cp.reactions or 0)
         agg["total_reposts"] += int(cp.forwards or 0)
         agg["total_comments"] += int(cp.comments or 0)
-
-    # VK - через PostTarget + latest PostStats
-    vk_targets = db.query(PostTarget).join(Channel).filter(
-        Channel.is_active == True,
-        Channel.platform == Platform.vk,
-        PostTarget.status == PostTargetStatus.published,
-        PostTarget.published_at >= since,
-        PostTarget.published_at < until,
-    ).all()
-    latest = _latest_stats_subquery(db)
-    for t in vk_targets:
-        if not t.channel:
-            continue
-        s = latest.get(t.id)
-        if not s:
-            continue
-        agg = result.setdefault(t.channel_id, {
-            "channel_id": t.channel_id, "name": t.channel.name, "platform": "vk",
-            "posts_count": 0, "total_views": 0, "total_likes": 0,
-            "total_reposts": 0, "total_comments": 0,
-        })
-        agg["posts_count"] += 1
-        agg["total_views"] += int(s.views or 0)
-        agg["total_likes"] += int(s.likes or 0)
-        agg["total_reposts"] += int(s.reposts or 0)
-        agg["total_comments"] += int(s.comments or 0)
 
     items = list(result.values())
     items.sort(key=lambda x: x["total_views"], reverse=True)

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.post import Post, PostTarget, PostTargetStatus
 from models.channel import Channel, Platform
-from models.stats import PostStats, ChannelSnapshot
+from models.stats import PostStats, ChannelSnapshot, ChannelPost
 
 VK_API = "https://api.vk.com/method"
 
@@ -68,7 +68,8 @@ async def collect_vk_channel_subs(channel: Channel, db: Session):
         if groups and len(groups) > 0:
             members = groups[0].get("members_count", 0)
 
-    # 2. последние 100 постов канала - средние метрики
+    # 2. последние 100 постов канала - средние метрики + upsert каждого поста в channel_posts
+    # (чтобы работали общие расчёты по каналу как для TG/TT - все посты, не только через сервис)
     avg_views = avg_likes = avg_reposts = avg_comments = 0
     posts_total = 0
     try:
@@ -86,6 +87,53 @@ async def collect_vk_channel_subs(channel: Channel, db: Session):
             avg_likes = sum(p.get("likes", {}).get("count", 0) for p in posts) // posts_total
             avg_reposts = sum(p.get("reposts", {}).get("count", 0) for p in posts) // posts_total
             avg_comments = sum(p.get("comments", {}).get("count", 0) for p in posts) // posts_total
+
+        # Upsert каждого поста в channel_posts - чтобы "По каналам за период" видела ВСЕ посты,
+        # а не только через наш сервис. Ключ: (channel_id, message_id).
+        # VK: у поста есть id (в рамках стены группы). Ссылка: vk.com/wall{owner_id}_{id}
+        owner_str = str(owner_id)
+        for p in posts:
+            msg_id = p.get("id")
+            if not msg_id:
+                continue
+            date_ts = p.get("date")  # unix ts
+            if not date_ts:
+                continue
+            pub_dt = datetime.fromtimestamp(int(date_ts))
+            text = (p.get("text") or "")[:1000]
+            views = p.get("views", {}).get("count", 0)
+            likes = p.get("likes", {}).get("count", 0)
+            reposts = p.get("reposts", {}).get("count", 0)
+            comments = p.get("comments", {}).get("count", 0)
+            link = f"https://vk.com/wall{owner_str}_{msg_id}"
+
+            existing = db.query(ChannelPost).filter(
+                ChannelPost.channel_id == channel.id,
+                ChannelPost.message_id == int(msg_id),
+            ).first()
+            if existing:
+                existing.text = text
+                existing.published_at = pub_dt
+                existing.views = views
+                existing.forwards = reposts
+                existing.reactions = likes
+                existing.comments = comments
+                existing.link = link
+                existing.updated_at = datetime.now()
+            else:
+                db.add(ChannelPost(
+                    channel_id=channel.id,
+                    message_id=int(msg_id),
+                    text=text,
+                    published_at=pub_dt,
+                    views=views,
+                    forwards=reposts,
+                    reactions=likes,
+                    comments=comments,
+                    link=link,
+                    updated_at=datetime.now(),
+                ))
+            db.flush()
     except Exception as e:
         print(f"[stats] vk wall.get failed for {channel.name}: {e}")
 
