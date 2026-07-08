@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # где TG-API блочится РКН). Формат: socks5://127.0.0.1:1080. Пусто = прямое подключение.
     tg_proxy_url: str = ""
 
+    # RapidAPI-ключ для TikTok API (tiktok-api23) - используется для сбора статистики
+    # TT-каналов. Получить: rapidapi.com → TikTok API → Basic (Free).
+    rapidapi_tt_key: str = ""
+    rapidapi_tt_host: str = "tiktok-api23.p.rapidapi.com"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

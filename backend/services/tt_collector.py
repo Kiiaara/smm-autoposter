@@ -262,37 +262,110 @@ async def collect_all_tt_channels(db: Session, period_days: int = 30) -> Dict[st
             })
             continue
 
-        # 1. HTML - тянем подписчиков + secUid
-        html_res = await _collect_via_html(username, period_days)
-        if not html_res.get("ok"):
+        # Основной путь - RapidAPI. Если ключа нет - фолбэк на HTML (даст только подписчиков)
+        if settings.rapidapi_tt_key:
+            res = await _collect_via_rapidapi(username, period_days)
+        else:
+            res = await _collect_via_html(username, period_days)
+
+        if not res.get("ok"):
             summary.append({
                 "channel_id": ch.id, "name": ch.name,
-                "ok": False, "error": f"html: {html_res.get('error')}",
+                "ok": False, "error": res.get("error"),
             })
             continue
 
-        subscribers = html_res["subscribers"]
-        posts = html_res["posts"]
-        sec_uid = html_res.get("sec_uid")
-
-        # 2. если постов мало (< 5) - пробуем догрузить через web-api
-        if len(posts) < 5 and sec_uid:
-            api_res = await _collect_via_web_api(username, sec_uid, period_days)
-            if api_res.get("ok") and api_res.get("posts"):
-                # объединяем без дубликатов
-                existing_ids = {p["message_id"] for p in posts}
-                for p in api_res["posts"]:
-                    if p["message_id"] not in existing_ids:
-                        posts.append(p)
-
-        _upsert_channel_data(db, ch.id, subscribers, posts)
+        _upsert_channel_data(db, ch.id, res["subscribers"], res["posts"])
         summary.append({
             "channel_id": ch.id,
             "name": ch.name,
             "ok": True,
-            "subscribers": subscribers,
-            "posts": len(posts),
+            "subscribers": res["subscribers"],
+            "posts": len(res["posts"]),
+            "source": res.get("source"),
         })
 
     db.commit()
     return {"ok": True, "channels": summary}
+
+
+async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, Any]:
+    """Сбор через RapidAPI TikTok API 23 - самый надёжный путь.
+    Два запроса: /api/user/info (инфа + secUid) → /api/user/posts (список видео).
+    Расход квоты: 1 + N страниц по 30 видео. Для 30 дней активного канала обычно 2-3 запроса."""
+    api_headers = {
+        "x-rapidapi-key": settings.rapidapi_tt_key,
+        "x-rapidapi-host": settings.rapidapi_tt_host,
+    }
+    base = f"https://{settings.rapidapi_tt_host}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. инфа юзера
+        try:
+            r = await client.get(f"{base}/api/user/info", params={"uniqueId": username}, headers=api_headers)
+            info = r.json()
+        except Exception as e:
+            return {"ok": False, "error": f"user/info: {e}"}
+
+        user_info = (info.get("userInfo") or {}) if isinstance(info, dict) else {}
+        user = user_info.get("user") or {}
+        stats = user_info.get("stats") or user_info.get("statsV2") or {}
+        sec_uid = user.get("secUid") or user.get("sec_uid")
+        subscribers = int(stats.get("followerCount") or 0)
+
+        if not sec_uid:
+            return {"ok": False, "error": f"no secUid in response: {str(info)[:200]}"}
+
+        # 2. список постов постранично
+        since = datetime.now() - timedelta(days=period_days)
+        posts: List[Dict[str, Any]] = []
+        cursor = 0
+        max_pages = 5
+
+        for page in range(max_pages):
+            try:
+                r = await client.get(
+                    f"{base}/api/user/posts",
+                    params={"secUid": sec_uid, "count": "30", "cursor": str(cursor)},
+                    headers=api_headers,
+                )
+                data = r.json()
+            except Exception as e:
+                log.warning(f"TT rapidapi page {page}: {e}")
+                break
+
+            items = (data.get("data") or {}).get("itemList") or data.get("itemList") or []
+            if not items:
+                break
+
+            oldest_in_page = None
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                create_time = int(it.get("createTime") or 0)
+                if not create_time:
+                    continue
+                pub_dt = datetime.fromtimestamp(create_time)
+                oldest_in_page = pub_dt if oldest_in_page is None else min(oldest_in_page, pub_dt)
+                if pub_dt < since:
+                    continue
+                st = it.get("stats") or it.get("statsV2") or {}
+                posts.append({
+                    "message_id": int(it.get("id") or 0),
+                    "published_at": pub_dt,
+                    "text": (it.get("desc") or "")[:1000],
+                    "views": int(st.get("playCount") or 0),
+                    "forwards": int(st.get("shareCount") or 0),
+                    "reactions": int(st.get("diggCount") or 0),
+                    "comments": int(st.get("commentCount") or 0),
+                    "link": f"https://www.tiktok.com/@{username}/video/{it.get('id')}",
+                })
+
+            if oldest_in_page and oldest_in_page < since:
+                break
+            has_more = bool((data.get("data") or {}).get("hasMore") or data.get("hasMore"))
+            if not has_more:
+                break
+            cursor = int((data.get("data") or {}).get("cursor") or data.get("cursor") or 0)
+
+    return {"ok": True, "subscribers": subscribers, "posts": posts, "source": "rapidapi"}
