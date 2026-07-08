@@ -8,6 +8,7 @@ class Platform(str, enum.Enum):
     vk = "vk"
     ig = "ig"
     max = "max"
+    tt = "tt"
 
 
 class Channel(Base):
@@ -20,5 +21,6 @@ class Channel(Base):
     # VK:  {"access_token": "...", "owner_id": "-12345", "version": "5.131"}
     # IG:  {"page_id": "...", "access_token": "..."} (stub)
     # Max: {} (stub)
+    # TT:  {"username": "tpabomah_tiktok"}  (только сбор статистики, без публикации)
     config_json = Column(JSON, default=dict)
     is_active = Column(Boolean, default=True)

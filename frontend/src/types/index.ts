@@ -1,4 +1,4 @@
-export type Platform = 'tg' | 'vk' | 'ig' | 'max'
+export type Platform = 'tg' | 'vk' | 'ig' | 'max' | 'tt'
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed'
 export type PostTargetStatus = 'pending' | 'published' | 'failed'
 

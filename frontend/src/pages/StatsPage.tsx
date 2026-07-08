@@ -2,13 +2,13 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { getOverview, getTopPosts, getSubscribers, getBestTime, collectTgNow } from '../api/stats'
+import { getOverview, getTopPosts, getSubscribers, getBestTime, collectTgNow, collectTtNow } from '../api/stats'
 import { getChannels } from '../api/channels'
 import { useQueryClient } from '@tanstack/react-query'
 import styles from './StatsPage.module.css'
 
-const PLATFORM_LABELS: Record<string, string> = { tg: 'TG', vk: 'VK', ig: 'IG', max: 'MX' }
-const PLATFORM_COLORS: Record<string, string> = { tg: '#29b6f6', vk: '#4a76a8', ig: '#e1306c', max: '#ff6b35' }
+const PLATFORM_LABELS: Record<string, string> = { tg: 'TG', vk: 'VK', ig: 'IG', max: 'MX', tt: 'TT' }
+const PLATFORM_COLORS: Record<string, string> = { tg: '#29b6f6', vk: '#4a76a8', ig: '#e1306c', max: '#ff6b35', tt: '#ff0050' }
 const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 type SortBy = 'views' | 'likes' | 'reposts' | 'comments'
@@ -27,16 +27,18 @@ export default function StatsPage() {
   const [period, setPeriod] = useState(30)
   const [sortBy, setSortBy] = useState<SortBy>('views')
 
-  // Сбор статистики TG прямо с сервера через Telethon (VPN-туннель)
-  const handleCollectTg = async () => {
+  // Универсальный сбор для TG (Telethon) и TT (TikTokApi) - оба ходят через xray-туннель
+  const handleCollect = async (kind: 'tg' | 'tt') => {
     setCollecting(true)
     setCollectMsg('')
     try {
-      const res = await collectTgNow(period)
+      const fn = kind === 'tg' ? collectTgNow : collectTtNow
+      const label = kind === 'tg' ? 'TG' : 'TikTok'
+      const res = await fn(period)
       const ok = res.channels.filter((c: any) => c.ok).length
       const total = res.channels.length
       const posts = res.channels.reduce((sum: number, c: any) => sum + (c.posts || 0), 0)
-      setCollectMsg(`Собрано: ${ok}/${total} каналов, ${posts} постов`)
+      setCollectMsg(`${label}: собрано ${ok}/${total} каналов, ${posts} постов`)
       qc.invalidateQueries({ queryKey: ['stats-top'] })
       qc.invalidateQueries({ queryKey: ['stats-overview'] })
       qc.invalidateQueries({ queryKey: ['stats-subs'] })
@@ -46,7 +48,7 @@ export default function StatsPage() {
       setCollecting(false)
     }
   }
-  const [topPlatform, setTopPlatform] = useState<'all' | 'tg' | 'vk'>('all')
+  const [topPlatform, setTopPlatform] = useState<'all' | 'tg' | 'vk' | 'tt'>('all')
   const [topChannelId, setTopChannelId] = useState<number | 'all'>('all')
 
   // сравнение каналов: до 2-х выбранных
@@ -234,7 +236,7 @@ export default function StatsPage() {
         <div className={styles.filtersRow}>
           <div className={styles.filterGroup}>
             <span className={styles.sortLabel}>Платформа:</span>
-            {(['all', 'tg', 'vk'] as const).map(p => (
+            {(['all', 'tg', 'vk', 'tt'] as const).map(p => (
               <button
                 key={p}
                 className={`${styles.sortBtn} ${topPlatform === p ? styles.sortBtnActive : ''}`}
@@ -272,11 +274,19 @@ export default function StatsPage() {
           )}
           <button
             className={`btn btn-primary ${styles.exportBtn}`}
-            onClick={handleCollectTg}
+            onClick={() => handleCollect('tg')}
             disabled={collecting}
             title="Собрать свежую статистику TG-каналов через VPN-туннель"
           >
             {collecting ? '⏳ Собираю...' : '🔄 Обновить TG'}
+          </button>
+          <button
+            className={`btn btn-primary ${styles.exportBtn}`}
+            onClick={() => handleCollect('tt')}
+            disabled={collecting}
+            title="Собрать свежую статистику TikTok-каналов"
+          >
+            {collecting ? '⏳ Собираю...' : '🔄 Обновить TT'}
           </button>
           {collectMsg && <span className={styles.sortLabel}>{collectMsg}</span>}
         </div>

@@ -77,3 +77,9 @@ export const collectTgNow = (period_days = 30) =>
     params: { period_days },
     timeout: 10 * 60 * 1000, // 10 минут - Telethon может идти долго через VPN
   }).then(r => r.data)
+
+export const collectTtNow = (period_days = 30) =>
+  client.post<{ ok: boolean; channels: any[] }>('/stats/tt/collect-now', null, {
+    params: { period_days },
+    timeout: 10 * 60 * 1000, // Playwright + xray - тоже долго
+  }).then(r => r.data)

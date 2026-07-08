@@ -58,6 +58,14 @@ const PLATFORM_FIELDS: Record<Platform, FieldDef[]> = {
     { key: 'access_token', label: 'Access Token', placeholder: 'EAABsb...' },
   ],
   max: [],
+  tt: [
+    {
+      key: 'username',
+      label: 'TikTok username',
+      placeholder: 'tpabomah_tiktok',
+      hint: 'Только для сбора статистики. Публикация в TT не поддерживается - только чтение метрик (просмотры, лайки, комменты, шеры). Указывай username без @ или полную ссылку tiktok.com/@username.',
+    },
+  ],
 }
 
 const STUBS: Platform[] = ['ig', 'max']

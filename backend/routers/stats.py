@@ -244,6 +244,7 @@ async def top_posts(
 
     want_vk = platform in (None, "vk")
     want_tg = platform in (None, "tg")
+    want_tt = platform in (None, "tt")
 
     # VK: из БД, как и раньше
     if want_vk:
@@ -295,6 +296,32 @@ async def top_posts(
                 title=None,
                 preview=(cp.text or "")[:160],
                 platform="tg",
+                channel_name=ch.name,
+                published_at=cp.published_at,
+                url=cp.link or None,
+                views=cp.views or 0,
+                likes=cp.reactions or 0,
+                reposts=cp.forwards or 0,
+                comments=cp.comments or 0,
+            ))
+
+    # TT: посты канала из ChannelPost (заливает tt_collector через TikTokApi)
+    if want_tt:
+        tt_q = db.query(ChannelPost).join(Channel).filter(
+            Channel.platform == Platform.tt,
+            ChannelPost.published_at >= since,
+        )
+        if channel_id:
+            tt_q = tt_q.filter(ChannelPost.channel_id == channel_id)
+        for cp in tt_q.all():
+            ch = cp.channel
+            if not ch:
+                continue
+            items.append(TopPostItem(
+                post_id=int(cp.message_id),
+                title=None,
+                preview=(cp.text or "")[:160],
+                platform="tt",
                 channel_name=ch.name,
                 published_at=cp.published_at,
                 url=cp.link or None,
@@ -702,6 +729,20 @@ async def tg_asset_proxy(url: str):
         media_type=ctype,
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+
+@router.post("/tt/collect-now")
+async def tt_collect_now(
+    period_days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Собирает статистику всех активных TT-каналов через TikTokApi + HTML fallback.
+    Идёт через SOCKS5 (TG_PROXY_URL), пишет в channel_posts + channel_snapshots."""
+    from services.tt_collector import collect_all_tt_channels
+    result = await collect_all_tt_channels(db, period_days=period_days)
+    if not result.get("ok"):
+        raise HTTPException(500, result.get("error", "TT-сбор не удался"))
+    return result
 
 
 @router.post("/tg/collect-now")
