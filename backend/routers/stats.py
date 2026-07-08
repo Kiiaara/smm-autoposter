@@ -731,15 +731,32 @@ async def tg_asset_proxy(url: str):
     )
 
 
+def _period_days_from(since_date: Optional[str], until_date: Optional[str], default: int = 30) -> int:
+    """Юзер может задать диапазон дат вместо period_days. Считаем разницу и + запас
+    до 'сегодня', т.к. коллекторы фильтруют 'опубликовано за N дней от now'."""
+    if not since_date:
+        return default
+    try:
+        since = datetime.strptime(since_date, "%Y-%m-%d")
+    except ValueError:
+        return default
+    # для since считаем от сегодня, чтобы гарантированно захватить нужный диапазон
+    delta = (datetime.now() - since).days + 1
+    return max(1, min(delta, 365))
+
+
 @router.post("/tt/collect-now")
 async def tt_collect_now(
     period_days: int = Query(30, ge=1, le=365),
+    since_date: Optional[str] = Query(None, description="YYYY-MM-DD, приоритетнее period_days"),
+    until_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
 ):
-    """Собирает статистику всех активных TT-каналов через TikTokApi + HTML fallback.
-    Идёт через SOCKS5 (TG_PROXY_URL), пишет в channel_posts + channel_snapshots."""
+    """Собирает статистику всех активных TT-каналов через RapidAPI (TikTok API 23).
+    Идёт через SOCKS5, пишет в channel_posts + channel_snapshots."""
     from services.tt_collector import collect_all_tt_channels
-    result = await collect_all_tt_channels(db, period_days=period_days)
+    effective = _period_days_from(since_date, until_date, period_days)
+    result = await collect_all_tt_channels(db, period_days=effective)
     if not result.get("ok"):
         raise HTTPException(500, result.get("error", "TT-сбор не удался"))
     return result
@@ -748,6 +765,8 @@ async def tt_collect_now(
 @router.post("/tg/collect-now")
 async def tg_collect_now(
     period_days: int = Query(30, ge=1, le=365),
+    since_date: Optional[str] = Query(None, description="YYYY-MM-DD, приоритетнее period_days"),
+    until_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
 ):
     """Собирает статистику всех активных TG-каналов через Telethon на сервере.
@@ -755,7 +774,98 @@ async def tg_collect_now(
     from services.tg_telethon_collector import collect_all_tg_channels, is_configured
     if not is_configured():
         raise HTTPException(500, "Telethon на сервере не настроен (TELETHON_API_ID/HASH/SESSION_STRING)")
-    result = await collect_all_tg_channels(db, period_days=period_days)
+    effective = _period_days_from(since_date, until_date, period_days)
+    result = await collect_all_tg_channels(db, period_days=effective)
     if not result.get("ok"):
         raise HTTPException(500, result.get("error", "Сбор не удался"))
     return result
+
+
+class ChannelTotalItem(BaseModel):
+    channel_id: int
+    name: str
+    platform: str
+    posts_count: int
+    total_views: int
+    total_likes: int
+    total_reposts: int
+    total_comments: int
+
+
+@router.get("/channel-totals", response_model=List[ChannelTotalItem])
+def channel_totals(
+    since_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    until_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    period_days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Сумма метрик по каждому каналу за период. VK - через PostTarget+PostStats,
+    TG/TT - через ChannelPost (там уже все посты канала)."""
+    if since_date:
+        try:
+            since = datetime.strptime(since_date, "%Y-%m-%d")
+        except ValueError:
+            since = datetime.now() - timedelta(days=period_days)
+    else:
+        since = datetime.now() - timedelta(days=period_days)
+
+    if until_date:
+        try:
+            until = datetime.strptime(until_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            until = datetime.now()
+    else:
+        until = datetime.now()
+
+    result: Dict[int, Dict] = {}
+
+    # TG/TT - берём из channel_posts
+    cps = db.query(ChannelPost).join(Channel).filter(
+        Channel.is_active == True,
+        ChannelPost.published_at >= since,
+        ChannelPost.published_at < until,
+    ).all()
+    for cp in cps:
+        ch = cp.channel
+        if not ch:
+            continue
+        agg = result.setdefault(ch.id, {
+            "channel_id": ch.id, "name": ch.name, "platform": ch.platform.value,
+            "posts_count": 0, "total_views": 0, "total_likes": 0,
+            "total_reposts": 0, "total_comments": 0,
+        })
+        agg["posts_count"] += 1
+        agg["total_views"] += int(cp.views or 0)
+        agg["total_likes"] += int(cp.reactions or 0)
+        agg["total_reposts"] += int(cp.forwards or 0)
+        agg["total_comments"] += int(cp.comments or 0)
+
+    # VK - через PostTarget + latest PostStats
+    vk_targets = db.query(PostTarget).join(Channel).filter(
+        Channel.is_active == True,
+        Channel.platform == Platform.vk,
+        PostTarget.status == PostTargetStatus.published,
+        PostTarget.published_at >= since,
+        PostTarget.published_at < until,
+    ).all()
+    latest = _latest_stats_subquery(db)
+    for t in vk_targets:
+        if not t.channel:
+            continue
+        s = latest.get(t.id)
+        if not s:
+            continue
+        agg = result.setdefault(t.channel_id, {
+            "channel_id": t.channel_id, "name": t.channel.name, "platform": "vk",
+            "posts_count": 0, "total_views": 0, "total_likes": 0,
+            "total_reposts": 0, "total_comments": 0,
+        })
+        agg["posts_count"] += 1
+        agg["total_views"] += int(s.views or 0)
+        agg["total_likes"] += int(s.likes or 0)
+        agg["total_reposts"] += int(s.reposts or 0)
+        agg["total_comments"] += int(s.comments or 0)
+
+    items = list(result.values())
+    items.sort(key=lambda x: x["total_views"], reverse=True)
+    return items

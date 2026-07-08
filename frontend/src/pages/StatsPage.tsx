@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { getOverview, getTopPosts, getSubscribers, getBestTime, collectTgNow, collectTtNow } from '../api/stats'
+import { getOverview, getTopPosts, getSubscribers, getBestTime, collectTgNow, collectTtNow, getChannelTotals } from '../api/stats'
 import { getChannels } from '../api/channels'
 import { useQueryClient } from '@tanstack/react-query'
 import styles from './StatsPage.module.css'
@@ -27,14 +27,21 @@ export default function StatsPage() {
   const [period, setPeriod] = useState(30)
   const [sortBy, setSortBy] = useState<SortBy>('views')
 
-  // Универсальный сбор для TG (Telethon) и TT (TikTokApi) - оба ходят через xray-туннель
+  // Диапазон дат для ручного сбора и сумм по каналам. Если пусто - работает period_days.
+  const [sinceDate, setSinceDate] = useState<string>('')
+  const [untilDate, setUntilDate] = useState<string>('')
+
+  // Универсальный сбор для TG (Telethon) и TT (RapidAPI) - оба ходят через xray-туннель
   const handleCollect = async (kind: 'tg' | 'tt') => {
     setCollecting(true)
     setCollectMsg('')
     try {
       const fn = kind === 'tg' ? collectTgNow : collectTtNow
       const label = kind === 'tg' ? 'TG' : 'TikTok'
-      const res = await fn(period)
+      const params: any = sinceDate
+        ? { since_date: sinceDate, until_date: untilDate || undefined }
+        : { period_days: period }
+      const res = await fn(params)
       const ok = res.channels.filter((c: any) => c.ok).length
       const total = res.channels.length
       const posts = res.channels.reduce((sum: number, c: any) => sum + (c.posts || 0), 0)
@@ -42,12 +49,22 @@ export default function StatsPage() {
       qc.invalidateQueries({ queryKey: ['stats-top'] })
       qc.invalidateQueries({ queryKey: ['stats-overview'] })
       qc.invalidateQueries({ queryKey: ['stats-subs'] })
+      qc.invalidateQueries({ queryKey: ['channel-totals'] })
     } catch (e: any) {
       setCollectMsg(`Ошибка: ${e?.response?.data?.detail || e.message || 'unknown'}`)
     } finally {
       setCollecting(false)
     }
   }
+
+  // Суммы просмотров/лайков по каждому каналу за период (или произвольный диапазон)
+  const totalsParams = sinceDate
+    ? { since_date: sinceDate, until_date: untilDate || undefined }
+    : { period_days: period }
+  const { data: channelTotals = [] } = useQuery({
+    queryKey: ['channel-totals', totalsParams],
+    queryFn: () => getChannelTotals(totalsParams),
+  })
   const [topPlatform, setTopPlatform] = useState<'all' | 'tg' | 'vk' | 'tt'>('all')
   const [topChannelId, setTopChannelId] = useState<number | 'all'>('all')
 
@@ -113,12 +130,38 @@ export default function StatsPage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <h1 className={styles.pageTitle}>Статистика</h1>
-        <select className={styles.periodSelect} value={period} onChange={e => setPeriod(Number(e.target.value))}>
-          <option value={7}>Последние 7 дней</option>
-          <option value={30}>Последние 30 дней</option>
-          <option value={60}>Последние 60 дней</option>
-          <option value={90}>Последние 90 дней</option>
-        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            className={styles.periodSelect}
+            value={sinceDate ? '' : period}
+            onChange={e => { setPeriod(Number(e.target.value)); setSinceDate(''); setUntilDate('') }}
+          >
+            <option value={7}>Последние 7 дней</option>
+            <option value={30}>Последние 30 дней</option>
+            <option value={60}>Последние 60 дней</option>
+            <option value={90}>Последние 90 дней</option>
+            {sinceDate && <option value="">Свой диапазон</option>}
+          </select>
+          <span className={styles.sortLabel}>или с</span>
+          <input
+            type="date"
+            className={styles.channelSelect}
+            value={sinceDate}
+            onChange={e => setSinceDate(e.target.value)}
+          />
+          <span className={styles.sortLabel}>по</span>
+          <input
+            type="date"
+            className={styles.channelSelect}
+            value={untilDate}
+            onChange={e => setUntilDate(e.target.value)}
+          />
+          {sinceDate && (
+            <button className={styles.clearBtn} onClick={() => { setSinceDate(''); setUntilDate('') }} title="Сбросить диапазон">
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Общие метрики */}
@@ -128,6 +171,53 @@ export default function StatsPage() {
         <MetricCard label="Лайков" value={overview?.total_likes ?? 0} />
         <MetricCard label="Комментариев" value={overview?.total_comments ?? 0} />
       </div>
+
+      {/* Суммы по каналам за период */}
+      <Section title="Просмотры по каналам за период">
+        {channelTotals.length === 0 ? (
+          <p className={styles.empty}>Нет данных за период. Проверь что каналы активны и собери статистику кнопками "Обновить TG/TT" ниже.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className={styles.cmpTable}>
+              <thead>
+                <tr>
+                  <th>Канал</th>
+                  <th style={{ textAlign: 'right' }}>Постов</th>
+                  <th style={{ textAlign: 'right' }}>Просмотры</th>
+                  <th style={{ textAlign: 'right' }}>Реакции</th>
+                  <th style={{ textAlign: 'right' }}>Репосты</th>
+                  <th style={{ textAlign: 'right' }}>Комментарии</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channelTotals.map((c: any) => (
+                  <tr key={c.channel_id}>
+                    <td>
+                      <span className={styles.platformBadge} style={{ background: PLATFORM_COLORS[c.platform] }}>
+                        {PLATFORM_LABELS[c.platform]}
+                      </span>
+                      {' '}{c.name}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{c.posts_count.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{c.total_views.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{c.total_likes.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{c.total_reposts.toLocaleString('ru')}</td>
+                    <td style={{ textAlign: 'right' }}>{c.total_comments.toLocaleString('ru')}</td>
+                  </tr>
+                ))}
+                <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
+                  <td>Итого</td>
+                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.posts_count, 0).toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_views, 0).toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_likes, 0).toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_reposts, 0).toLocaleString('ru')}</td>
+                  <td style={{ textAlign: 'right' }}>{channelTotals.reduce((s: number, c: any) => s + c.total_comments, 0).toLocaleString('ru')}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
 
       {/* Каналы - сравнение */}
       <Section title="Сравнение каналов">

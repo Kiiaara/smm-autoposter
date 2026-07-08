@@ -72,14 +72,34 @@ export const getSubscribers = (period_days = 30) =>
 export const getBestTime = (period_days = 60) =>
   client.get<BestTimeCell[]>('/stats/best-time', { params: { period_days } }).then(r => r.data)
 
-export const collectTgNow = (period_days = 30) =>
+interface CollectParams {
+  period_days?: number
+  since_date?: string  // YYYY-MM-DD
+  until_date?: string  // YYYY-MM-DD
+}
+
+export const collectTgNow = (params: CollectParams = { period_days: 30 }) =>
   client.post<{ ok: boolean; channels: any[] }>('/stats/tg/collect-now', null, {
-    params: { period_days },
+    params,
     timeout: 10 * 60 * 1000, // 10 минут - Telethon может идти долго через VPN
   }).then(r => r.data)
 
-export const collectTtNow = (period_days = 30) =>
+export const collectTtNow = (params: CollectParams = { period_days: 30 }) =>
   client.post<{ ok: boolean; channels: any[] }>('/stats/tt/collect-now', null, {
-    params: { period_days },
-    timeout: 10 * 60 * 1000, // Playwright + xray - тоже долго
+    params,
+    timeout: 10 * 60 * 1000,
   }).then(r => r.data)
+
+export interface ChannelTotal {
+  channel_id: number
+  name: string
+  platform: string
+  posts_count: number
+  total_views: number
+  total_likes: number
+  total_reposts: number
+  total_comments: number
+}
+
+export const getChannelTotals = (params: { since_date?: string; until_date?: string; period_days?: number }) =>
+  client.get<ChannelTotal[]>('/stats/channel-totals', { params }).then(r => r.data)
