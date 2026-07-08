@@ -148,6 +148,32 @@
   font-weight: 400;
 }
 
+/* Итоговая полоса под таблицей "По каналам" */
+.totalSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(123, 97, 255, 0.12), rgba(41, 182, 246, 0.08));
+  border: 1px solid rgba(123, 97, 255, 0.3);
+  border-radius: 10px;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}
+.totalLabel {
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: var(--fs-sm);
+}
+.totalItem b {
+  color: var(--brand);
+  font-size: 18px;
+}
+
 /* Сравнение каналов: таблица 2-х колонок (A / B / разница) */
 .cmpTable {
   display: flex;
