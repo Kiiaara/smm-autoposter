@@ -299,8 +299,8 @@ async def _collect_via_rapidapi(username: str, period_days: int) -> Dict[str, An
     }
     base = f"https://{settings.rapidapi_tt_host}"
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        # 1. инфа юзера
+    async with httpx.AsyncClient(**_httpx_kwargs(30)) as client:
+        # 1. инфа юзера. Ходим через xray - RapidAPI режет по IP страны (РФ забанена)
         try:
             r = await client.get(f"{base}/api/user/info", params={"uniqueId": username}, headers=api_headers)
             info = r.json()
