@@ -119,6 +119,20 @@
 }
 .postCardDraft:hover { opacity: 1; border-color: var(--accent); border-style: solid; }
 
+/* Провал публикации - хотя бы один таргет упал/просрочен */
+.postCardFailed {
+  background: rgba(255, 77, 79, 0.08);
+  border-color: #ff4d4f;
+  border-left: 4px solid #ff4d4f;
+}
+.postCardFailed:hover { border-color: #ff4d4f; }
+
+.channelChipFail {
+  background: rgba(255, 77, 79, 0.15);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
 .cardHeader {
   display: flex;
   align-items: center;

@@ -110,20 +110,39 @@ function PostCard({ post, onClick }: { post: CalendarPost; onClick: () => void }
   })
 
   const isDraft = post.status === 'draft'
-  const statusIcon = post.status === 'published' ? '✓'
-                   : post.status === 'failed' ? '!'
-                   : isDraft ? '✎'
-                   : '⏱'
-  const statusClass = post.status === 'published' ? styles.iconPublished
-                   : post.status === 'failed' ? styles.iconFailed
-                   : isDraft ? styles.iconDraft
-                   : styles.iconScheduled
+
+  // Вычисляем фактический статус из таргетов - post.status обманчив
+  // (может быть 'published' даже если один из каналов упал, и наоборот - 'scheduled'
+  // хотя таргет уже давно 'failed'). Плюс просроченные pending считаем failed.
+  const now = new Date()
+  const scheduledDt = new Date(post.scheduled_at)
+  const isPast = scheduledDt < now
+  const targets = post.targets || []
+  const hasFailed = targets.some(t => t.status === 'failed' || (t.status === 'pending' && isPast))
+  const hasOk = targets.some(t => t.status === 'published')
+  const allOk = targets.length > 0 && targets.every(t => t.status === 'published')
+
+  let statusIcon: string
+  let statusClass: string
+  if (isDraft) {
+    statusIcon = '✎'
+    statusClass = styles.iconDraft
+  } else if (hasFailed) {
+    statusIcon = hasOk ? '⚠' : '✕'
+    statusClass = styles.iconFailed
+  } else if (allOk) {
+    statusIcon = '✓'
+    statusClass = styles.iconPublished
+  } else {
+    statusIcon = '⏱'
+    statusClass = styles.iconScheduled
+  }
 
   const text = post.preview_text?.trim() || (post.has_poll ? 'Опрос (без описания)' : 'Без текста')
   const hasPlatforms = post.platforms.length > 0
 
   return (
-    <div className={`${styles.postCard} ${isDraft ? styles.postCardDraft : ''}`} onClick={onClick}>
+    <div className={`${styles.postCard} ${isDraft ? styles.postCardDraft : ''} ${hasFailed ? styles.postCardFailed : ''}`} onClick={onClick}>
       <div className={styles.cardHeader}>
         <span className={`${styles.statusIcon} ${statusClass}`}>{statusIcon}</span>
         <span className={styles.cardTime}>{time}</span>
@@ -193,10 +212,16 @@ function PostCard({ post, onClick }: { post: CalendarPost; onClick: () => void }
           {post.targets && post.targets.length > 0 ? (
             post.targets.map((t, i) => {
               const info = PLATFORM_INFO[t.platform]
+              const failed = t.status === 'failed' || (t.status === 'pending' && isPast)
+              const title = failed
+                ? `${info?.label || t.platform} · ${t.channel_name}: НЕ ОПУБЛИКОВАН`
+                : t.status === 'published'
+                  ? `${info?.label || t.platform} · ${t.channel_name}: опубликован`
+                  : `${info?.label || t.platform} · ${t.channel_name}: ждёт публикации`
               return (
-                <span key={i} className={styles.channelChip}>
-                  <span className={styles.platformBadge} style={{ background: info?.bg }}>
-                    {info?.label || t.platform}
+                <span key={i} className={`${styles.channelChip} ${failed ? styles.channelChipFail : ''}`} title={title}>
+                  <span className={styles.platformBadge} style={{ background: failed ? '#ff4d4f' : info?.bg }}>
+                    {failed ? '⚠' : ''}{info?.label || t.platform}
                   </span>
                   <span className={styles.channelChipName}>{t.channel_name}</span>
                 </span>
