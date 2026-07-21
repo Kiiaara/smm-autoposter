@@ -37,6 +37,16 @@
   font-size: 9px;
   font-weight: 700;
 }
+.chipFail {
+  background: rgba(255, 77, 79, 0.18);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.hasFail {
+  border-color: #ff4d4f !important;
+  border-left: 3px solid #ff4d4f !important;
+  background: rgba(255, 77, 79, 0.08);
+}
 
 .text {
   color: var(--text2);
