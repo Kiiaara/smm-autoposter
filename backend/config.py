@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     rapidapi_tt_key: str = ""
     rapidapi_tt_host: str = "tiktok-api23.p.rapidapi.com"
 
+    # VK-алерты о фейлах публикации. Присылаются в личку через messages.send.
+    # Работают из РФ напрямую, без прокси - главный канал уведомлений когда TG-прокси мёртв.
+    alert_vk_token: str = ""       # user-token с scope=messages,offline
+    alert_vk_user_id: str = ""     # id вконтакте (только цифры, свой)
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

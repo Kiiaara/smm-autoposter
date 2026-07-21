@@ -1,11 +1,61 @@
+import re
 from datetime import datetime, timedelta
 from html import escape
+import httpx
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.reminder import Reminder
 from models.post import PostTarget, PostTargetStatus
 from config import settings
 from publishers.telegram import send_reminder
+
+
+async def send_vk_alert(text_html: str) -> bool:
+    """Отправка алерта в VK-личку. Работает без прокси (VK доступен с РФ).
+    text_html - HTML-текст, тут конвертим в plain для VK. Возвращает True если отправлено."""
+    token = settings.alert_vk_token
+    user_id = settings.alert_vk_user_id
+    if not token or not user_id:
+        return False
+    # HTML → plain: убираем теги, декодим &amp; и т.д.
+    from html import unescape
+    plain = re.sub(r'<br\s*/?>', '\n', text_html, flags=re.IGNORECASE)
+    plain = re.sub(r'</p>|</div>', '\n', plain, flags=re.IGNORECASE)
+    plain = re.sub(r'<[^>]+>', '', plain)
+    plain = unescape(plain).strip()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post("https://api.vk.com/method/messages.send", params={
+                "user_id": user_id,
+                "message": plain,
+                "random_id": int(datetime.now().timestamp() * 1000),
+                "access_token": token,
+                "v": "5.131",
+            })
+        data = r.json()
+        if data.get("error"):
+            print(f"[alert] VK send error: {data['error']}", flush=True)
+            return False
+        return True
+    except Exception as e:
+        print(f"[alert] VK send exception: {e}", flush=True)
+        return False
+
+
+async def send_alert(text_html: str):
+    """Универсальная отправка алерта. Приоритет: VK-личка (работает без прокси),
+    fallback - TG (может висеть если прокси мёртв, но пробуем)."""
+    if await send_vk_alert(text_html):
+        return
+    # fallback на TG
+    token = settings.reminder_bot_token
+    chat_id = settings.reminder_chat_id
+    if not token or not chat_id:
+        return
+    try:
+        await send_reminder(token, chat_id, text_html, parse_mode="HTML")
+    except Exception as e:
+        print(f"[alert] TG fallback failed too: {e}", flush=True)
 
 AFTER_PUBLISH_DELAY = timedelta(minutes=2)
 
@@ -119,12 +169,8 @@ async def send_noon_post_links(post_id: int, post_title: str | None = None):
 
 
 async def send_publish_failure_alert(post_id: int, post_title: str | None = None):
-    """Мгновенный пинг при ошибках публикации (независимо от reminder'ов)."""
-    token = settings.reminder_bot_token
-    chat_id = settings.reminder_chat_id
-    if not token or not chat_id:
-        return
-
+    """Мгновенный пинг при ошибках публикации (независимо от reminder'ов).
+    Идёт через send_alert - VK-личка приоритет, TG fallback."""
     db: Session = SessionLocal()
     try:
         failed = db.query(PostTarget).filter(
@@ -141,11 +187,6 @@ async def send_publish_failure_alert(post_id: int, post_title: str | None = None
             name = escape(t.channel.name if t.channel else f"channel#{t.channel_id}")
             err = escape(t.error or "неизвестная ошибка")
             lines.append(f"• [{platform}] <b>{name}</b>\n   <code>{err}</code>")
-        # Алерт идёт через TG - если TG-прокси мёртв, не роняем весь публикатор.
-        # Просто пишем в лог и продолжаем - главное не блокировать scheduler.
-        try:
-            await send_reminder(token, chat_id, "\n".join(lines), parse_mode="HTML")
-        except Exception as e:
-            print(f"[alert] failed to send TG failure alert: {e}", flush=True)
+        await send_alert("\n".join(lines))
     finally:
         db.close()
