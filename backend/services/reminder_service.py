@@ -141,6 +141,11 @@ async def send_publish_failure_alert(post_id: int, post_title: str | None = None
             name = escape(t.channel.name if t.channel else f"channel#{t.channel_id}")
             err = escape(t.error or "неизвестная ошибка")
             lines.append(f"• [{platform}] <b>{name}</b>\n   <code>{err}</code>")
-        await send_reminder(token, chat_id, "\n".join(lines), parse_mode="HTML")
+        # Алерт идёт через TG - если TG-прокси мёртв, не роняем весь публикатор.
+        # Просто пишем в лог и продолжаем - главное не блокировать scheduler.
+        try:
+            await send_reminder(token, chat_id, "\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            print(f"[alert] failed to send TG failure alert: {e}", flush=True)
     finally:
         db.close()

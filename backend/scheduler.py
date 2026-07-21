@@ -15,7 +15,12 @@ async def publish_due_posts():
             Post.scheduled_at <= datetime.now(),
         ).all()
         for post in due:
-            await publish_post(post, db)
+            # Изолируем каждый пост - если один зависнет или крешнется, остальные всё равно
+            # попробуют опубликоваться, и scheduler освободится для следующего тика.
+            try:
+                await publish_post(post, db)
+            except Exception as e:
+                print(f"[scheduler] publish_post({post.id}) failed: {e}", flush=True)
     finally:
         db.close()
 
